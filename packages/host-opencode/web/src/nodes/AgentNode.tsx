@@ -12,7 +12,7 @@ export function AgentNode({
     <div
       style={{
         width: 180, padding: "8px 12px", background: "var(--surface)",
-        border: "1px solid var(--border)", borderLeft: `4px solid ${color(data.status)}`,
+        borderTop: "1px solid var(--border)", borderRight: "1px solid var(--border)", borderBottom: "1px solid var(--border)", borderLeft: `4px solid ${color(data.status)}`,
         borderRadius: 10, boxShadow: "var(--shadow)", font: "13px system-ui",
       }}
     >

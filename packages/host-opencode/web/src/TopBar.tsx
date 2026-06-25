@@ -23,7 +23,7 @@ export function TopBar({ run }: { run: RunSnapshot }): React.ReactElement {
             <button key={o} onClick={() => answerRun(run.runId, o)} style={btn()}>{o}</button>
           ))}
           <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="answer…" />
-          <button onClick={() => answerRun(run.runId, answer)} style={btn()}>Send</button>
+          <button onClick={() => { answerRun(run.runId, answer); setAnswer(""); }} style={btn()}>Send</button>
         </div>
       )}
     </header>
