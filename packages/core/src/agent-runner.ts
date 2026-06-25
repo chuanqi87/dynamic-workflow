@@ -4,8 +4,10 @@ import type { ModelAgentMapper } from "./model-agent-mapper.js";
 import type { ProgressReporter } from "./progress-reporter.js";
 import { runStructured } from "./structured-output.js";
 import type { Semaphore } from "./semaphore.js";
+import { currentFrames } from "./orchestration-context.js";
 import {
   LIMITS,
+  type AgentGroup,
   type AgentOpts,
   type AgentRequest,
   type AgentResult,
@@ -98,6 +100,10 @@ export class AgentRunner {
   }
 
   run = async (prompt: string, opts?: AgentOpts): Promise<unknown> => {
+    // Capture the group synchronously before the semaphore defers execution —
+    // AsyncLocalStorage context can be lost once the thunk runs in a different
+    // async continuation. CRITICAL: do not read currentFrames() inside execute().
+    const group = topGroup(currentFrames());
     if (++this.deps.counter.n > LIMITS.MAX_AGENTS) {
       throw new AgentLimitError(LIMITS.MAX_AGENTS);
     }
@@ -137,7 +143,7 @@ export class AgentRunner {
       throw new BudgetExceededError(budget.total ?? 0, budget.spent());
     }
 
-    return this.deps.semaphore.run(() => this.execute(prompt, opts, label, key));
+    return this.deps.semaphore.run(() => this.execute(prompt, opts, label, key, group));
   };
 
   private async execute(
@@ -145,6 +151,7 @@ export class AgentRunner {
     opts: AgentOpts | undefined,
     label: string,
     key: string,
+    group: AgentGroup | undefined,
   ): Promise<unknown> {
     const { adapter, reporter, mapper, journal } = this.deps;
 
@@ -153,7 +160,7 @@ export class AgentRunner {
     this.deps.onSession(sessionId);
     // Report start AFTER the session exists so the dashboard can bind this
     // agent row to its sub-session conversation.
-    reporter.agentStart(label, opts?.phase, sessionId);
+    reporter.agentStart(label, opts?.phase, sessionId, group);
 
     let directory: string | undefined;
     let cleanup: (() => Promise<void>) | undefined;
@@ -284,4 +291,17 @@ export class AgentRunner {
     const delay = base + base * jitter * this.deps.rng();
     await this.deps.sleep(delay);
   }
+}
+
+/** Map the top ALS frame to the AgentGroup shape the event carries. */
+function topGroup(frames: ReturnType<typeof currentFrames>): AgentGroup | undefined {
+  const top = frames.at(-1);
+  if (!top) return undefined;
+  return {
+    id: top.groupId,
+    kind: top.kind,
+    parentId: top.parentId,
+    index: top.index,
+    stageIndex: top.stageIndex,
+  };
 }

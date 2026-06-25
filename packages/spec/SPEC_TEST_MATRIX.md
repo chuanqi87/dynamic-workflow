@@ -55,3 +55,4 @@ DFX 加固行为,都至少映射到一个自动化测试。测试使用 `MockAda
 | 前缀恢复模式 | M7 | `resume.test.ts` → "prefix mode: changed early call invalidates" / "unchanged prefix reused" |
 | effort→reasoning_effort / 强制工具 schema | M7 | 未实现 —— 受限于 opencode SDK(无逐 prompt 的 reasoning_effort / 临时强制工具);已记录在案 |
 | question() 人在回路 | M8 | `dfx.test.ts` → "M8 question()";`run-manager.test.ts` → "ask()/answer()/cancel unblocks" |
+| `agent-start.group` 编排遥测 | §7 遥测 | `orchestration-metadata.test.ts` → "parallel children share a groupId" / "pipeline stages carry stageIndex" / "parallel nested in a pipeline stage links parentId" / "group ids are stable across a re-run" |

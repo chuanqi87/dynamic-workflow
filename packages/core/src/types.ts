@@ -127,6 +127,19 @@ export interface AgentResult {
   errorDetail?: string;
 }
 
+/**
+ * Where an agent() sits in the parallel/pipeline orchestration that spawned
+ * it. Optional, host-internal telemetry: not visible to scripts, never part
+ * of the journal key, and absent under Claude Code's native runtime.
+ */
+export interface AgentGroup {
+  id: string;
+  kind: "parallel" | "pipeline";
+  parentId?: string;
+  index: number;
+  stageIndex?: number;
+}
+
 /** Why an `agent()` call degraded to null — used for the run summary. */
 export type NullReason = "budget" | "aborted" | "timeout" | "apiError" | "schema";
 
@@ -162,7 +175,7 @@ export type ProgressEvent =
   | { type: "run-start"; meta: WorkflowMeta; runId: string }
   | { type: "phase"; title: string }
   | { type: "log"; message: string }
-  | { type: "agent-start"; label: string; phase?: string; sessionId?: string }
+  | { type: "agent-start"; label: string; phase?: string; sessionId?: string; group?: AgentGroup }
   | { type: "agent-done"; label: string; tokens: number; cost: number; sessionId?: string }
   | { type: "agent-null"; label: string; reason: string; category: NullReason; sessionId?: string }
   | { type: "agent-retry"; label: string; attempt: number; reason: string; sessionId?: string }

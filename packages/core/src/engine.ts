@@ -56,6 +56,8 @@ interface SharedState {
   journal: Journal;
   reporter: ProgressReporter;
   counter: AgentCounter;
+  /** Shared, deterministic group-id counter (parallel/pipeline). */
+  groups: { n: number };
   signal: AbortSignal;
   agentTimeoutMs: number;
   schemaRetries: number;
@@ -128,6 +130,7 @@ export async function runWorkflow(
     journal,
     reporter,
     counter: { n: 0 },
+    groups: { n: 0 },
     signal: controller.signal,
     agentTimeoutMs: config.agentTimeoutMs ?? 0,
     schemaRetries: config.schemaRetries ?? DEFAULT_SCHEMA_RETRIES,
@@ -284,6 +287,7 @@ async function runOne(
     phaseRef,
     workflow: workflowFn,
     question,
+    allocGroupId: () => `g${++shared.groups.n}`,
   });
 
   return executeBody(body, globals);

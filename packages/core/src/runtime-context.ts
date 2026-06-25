@@ -7,6 +7,7 @@ import {
 } from "./types.js";
 import type { AgentRunner } from "./agent-runner.js";
 import type { ProgressReporter } from "./progress-reporter.js";
+import { currentFrames, runInFrame } from "./orchestration-context.js";
 
 function assertBatch(kind: "parallel" | "pipeline", n: number): void {
   if (n > LIMITS.MAX_BATCH) {
@@ -22,14 +23,21 @@ function reason(err: unknown): string {
 export async function parallel(
   thunks: Array<() => Promise<unknown>>,
   onDrop?: (index: number, reason: string) => void,
+  allocGroupId?: () => string,
 ): Promise<unknown[]> {
   assertBatch("parallel", thunks.length);
+  const groupId = allocGroupId?.();
+  const parentId = currentFrames().at(-1)?.groupId;
   // No semaphore here — concurrency is governed inside agent(). Wrapping a bare
   // agent() in a thunk must not double-queue.
   return Promise.all(
     thunks.map((t, i) =>
       Promise.resolve()
-        .then(() => t())
+        .then(() =>
+          groupId
+            ? runInFrame({ kind: "parallel", groupId, parentId, index: i }, () => t())
+            : t(),
+        )
         .catch((err) => {
           onDrop?.(i, reason(err));
           return null;
@@ -54,14 +62,23 @@ async function pipelineWith(
   items: unknown[],
   onDrop: ((index: number, reason: string) => void) | undefined,
   stages: Array<(prev: unknown, item: unknown, index: number) => Promise<unknown>>,
+  allocGroupId?: () => string,
 ): Promise<unknown[]> {
   assertBatch("pipeline", items.length);
+  const groupId = allocGroupId?.();
+  const parentId = currentFrames().at(-1)?.groupId;
   return Promise.all(
     items.map(async (item, index) => {
       let prev: unknown = item;
       try {
-        for (const stage of stages) {
-          prev = await stage(prev, item, index);
+        for (let k = 0; k < stages.length; k++) {
+          const stage = stages[k]!;
+          prev = groupId
+            ? await runInFrame(
+                { kind: "pipeline", groupId, parentId, index, stageIndex: k },
+                () => stage(prev, item, index),
+              )
+            : await stage(prev, item, index);
         }
         return prev;
       } catch (err) {
@@ -84,6 +101,8 @@ export interface GlobalsDeps {
   workflow: (nameOrRef: string | { scriptPath: string }, args?: unknown) => Promise<unknown>;
   /** Host-in-the-loop question resolver. */
   question: (prompt: string, opts?: QuestionOpts) => Promise<string | null>;
+  /** Allocate a deterministic group id for the next parallel/pipeline call. */
+  allocGroupId: () => string;
 }
 
 /** Assemble the ambient globals injected into a workflow script body. */
@@ -91,12 +110,17 @@ export function buildGlobals(deps: GlobalsDeps): WorkflowGlobals & { meta: Workf
   return {
     agent: deps.runner.run,
     parallel: (thunks) =>
-      parallel(thunks, (index, r) => deps.reporter.dropFromBatch("parallel", index, r)),
+      parallel(
+        thunks,
+        (index, r) => deps.reporter.dropFromBatch("parallel", index, r),
+        deps.allocGroupId,
+      ),
     pipeline: (items, ...stages) =>
       pipelineWith(
         items,
         (index, r) => deps.reporter.dropFromBatch("pipeline", index, r),
         stages,
+        deps.allocGroupId,
       ),
     phase: (title: string) => {
       deps.phaseRef.current = title;

@@ -148,7 +148,18 @@ token 预算。`total` 为 `null` 表示无上限。一旦耗尽,后续 `agent()
 
 ---
 
-## 7. 最小合规示例
+## 7. 进度事件遥测（host 内部，非脚本可见）
+
+### `agent-start.group`（host 内部遥测，非脚本可见）
+
+`agent-start` 事件可携带可选的 `group`，描述该 `agent()` 在 `parallel`/`pipeline`
+编排中的位置：`{ id, kind: "parallel"|"pipeline", parentId?, index, stageIndex? }`。
+此字段由运行时通过 `AsyncLocalStorage` 编排上下文填充，**不影响脚本契约、journal key
+或 resume**；Claude Code 的原生运行时不发送该字段。仅 opencode dashboard 消费它。
+
+---
+
+## 8. 最小合规示例
 
 ```js
 export const meta = {

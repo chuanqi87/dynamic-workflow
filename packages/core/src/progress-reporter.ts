@@ -1,4 +1,4 @@
-import type { HostAdapter, NullReason, ProgressEvent, RunSummary } from "./types.js";
+import type { AgentGroup, HostAdapter, NullReason, ProgressEvent, RunSummary } from "./types.js";
 
 /**
  * Façade over {@link HostAdapter.report} that also accumulates a run summary.
@@ -37,9 +37,9 @@ export class ProgressReporter {
   log(message: string): void {
     this.emit({ type: "log", message });
   }
-  agentStart(label: string, phase?: string, sessionId?: string): void {
+  agentStart(label: string, phase?: string, sessionId?: string, group?: AgentGroup): void {
     this.agents++;
-    this.emit({ type: "agent-start", label, phase, sessionId });
+    this.emit({ type: "agent-start", label, phase, sessionId, group });
   }
   agentDone(label: string, tokens: number, cost: number, sessionId?: string): void {
     this.succeeded++;
