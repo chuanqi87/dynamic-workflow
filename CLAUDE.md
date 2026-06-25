@@ -8,7 +8,7 @@ A portable dynamic-workflow runtime. A single workflow script — plain JavaScri
 deterministically orchestrates sub-agents via injected globals (`agent`, `parallel`,
 `pipeline`, `phase`, `log`, `workflow`, `args`, `budget`) — runs **unchanged** on two
 hosts: Claude Code's native `Workflow` tool, *or* opencode via this plugin. The portability
-contract lives in one place: [`packages/spec/WORKFLOW_SCRIPT_SPEC.md`](./packages/spec/WORKFLOW_SCRIPT_SPEC.md).
+contract lives in one place: [`docs/spec/WORKFLOW_SCRIPT_SPEC.md`](./docs/spec/WORKFLOW_SCRIPT_SPEC.md).
 
 ## Commands
 
@@ -30,13 +30,14 @@ they cost money and need auth, so the offline suite above covers everything else
 
 ## Architecture
 
-Three packages, host-agnostic core with a single boundary to each platform:
+Two packages, host-agnostic core with a single boundary to each platform; the
+portability contract lives in `docs/spec/` as plain documentation (not a package):
 
 ```
 @workflow/core           host-agnostic runtime (sandbox, validator, orchestration)
   └── HostAdapter        the ONLY interface to a concrete platform
 @workflow/host-opencode  opencode adapter + plugin + headless CLI
-@workflow/spec           contract, authoring guide, example scripts (no src)
+docs/spec/               contract, authoring guide, example scripts (docs only, no package)
 ```
 
 ### The portability strategy
@@ -92,10 +93,10 @@ leak into core.
   function that derives the React Flow graph from a run snapshot) lives in `src/dashboard/`
   and is covered by the offline `bun test` suite.
 
-### Spec (`packages/spec`)
+### Spec (`docs/spec`)
 
-[WORKFLOW_SCRIPT_SPEC.md](./packages/spec/WORKFLOW_SCRIPT_SPEC.md) is the source of truth for
-the contract. [SPEC_TEST_MATRIX.md](./packages/spec/SPEC_TEST_MATRIX.md) maps contract clauses
+[WORKFLOW_SCRIPT_SPEC.md](./docs/spec/WORKFLOW_SCRIPT_SPEC.md) is the source of truth for
+the contract. [SPEC_TEST_MATRIX.md](./docs/spec/SPEC_TEST_MATRIX.md) maps contract clauses
 to regression tests — update it when changing cross-host behavior. `authoring-guide.md` is
 embedded into the tool description (also mirrored in `host-opencode/src/authoring-guide.ts`)
 so the model can author contract-compliant scripts. `examples/` are validated by

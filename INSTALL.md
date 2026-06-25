@@ -76,10 +76,10 @@ npm 名称,或指向已构建文件的绝对路径)。
 ```sh
 # 在仓库中运行(使用内嵌的 opencode 服务器)
 bun packages/host-opencode/dist/cli-runner.js \
-  packages/spec/examples/hello.workflow.js --concurrency 3
+  docs/spec/examples/hello.workflow.js --concurrency 3
 ```
 
-在 TUI 中,让代理用 `scriptPath: packages/spec/examples/hello.workflow.js` 运行
+在 TUI 中,让代理用 `scriptPath: docs/spec/examples/hello.workflow.js` 运行
 workflow 工具,然后从 toast 中打开仪表盘 URL,实时观看进度树以及每个代理的对话。
 
 > 实机运行会发起真实的模型调用(产生费用 + 需要鉴权)。单元/集成测试套件

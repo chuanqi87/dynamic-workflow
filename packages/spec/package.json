@@ -1,8 +1,0 @@
-{
-  "name": "@workflow/spec",
-  "version": "0.1.0",
-  "private": true,
-  "description": "The portable Workflow Script Spec, authoring guide, and cross-host example scripts.",
-  "type": "module",
-  "license": "MIT"
-}

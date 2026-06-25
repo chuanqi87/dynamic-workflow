@@ -30,7 +30,7 @@ import {
 } from "../packages/core/src/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const examplesDir = join(here, "..", "packages", "spec", "examples");
+const examplesDir = join(here, "..", "docs", "spec", "examples");
 
 /** Deterministic mock host: echoes prompts, never calls a model. */
 class DryRunHost implements HostAdapter {
