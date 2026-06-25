@@ -4,8 +4,20 @@
 
 ```sh
 bun install
-bun run build          # tsc -b → packages/*/dist
+bun run build          # tsc -b → packages/*/dist, then Vite → dashboard-dist/
 ```
+
+`bun run build` also runs `bun run build:dashboard` (Vite) as a final step, producing
+`packages/host-opencode/dashboard-dist/`. If you only need to rebuild the dashboard UI
+without touching TypeScript:
+
+```sh
+bun run build:dashboard   # Vite only — skips tsc -b
+```
+
+> **Unbuilt dashboard:** if `dashboard-dist/` is absent (e.g. a fresh checkout before the
+> first build), the HTTP server serves a placeholder page that tells you to run
+> `bun run build` or `bun run build:dashboard`.
 
 ## 在 opencode 中加载插件
 
@@ -52,7 +64,10 @@ npm 名称,或指向已构建文件的绝对路径)。
 在某个项目中启动 opencode 并检查:
 
 - `workflow` 工具已提供给模型,且 `/workflow` 出现在命令列表中;
-- 运行某个工作流时会弹出带有仪表盘 URL 的 toast。
+- 运行某个工作流时会弹出带有仪表盘 URL 的 toast(如 `http://localhost:4178`)。
+
+打开该 URL 即可看到节点图仪表盘(需已执行过 `bun run build` 或 `bun run build:dashboard`
+以生成 `dashboard-dist/`);否则将显示占位页并提示运行构建命令。
 
 ## 实机冒烟测试(真实模型)
 

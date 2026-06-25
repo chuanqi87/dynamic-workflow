@@ -86,6 +86,11 @@ leak into core.
   (begin/cancel/status, abort wiring).
 - `dashboard/` — opencode-only localhost web UI (progress tree + per-agent conversation
   streaming). **Not part of the portability contract**; disable via `{ "dashboard": false }`.
+  Assets are Vite-built to `packages/host-opencode/dashboard-dist/` (shipped via the package
+  `files` field; git-ignored in source). The web app under `web/` uses its own
+  `web/tsconfig.json` and is **not** included in the root `tsc -b`. `buildGraph` (a pure
+  function that derives the React Flow graph from a run snapshot) lives in `src/dashboard/`
+  and is covered by the offline `bun test` suite.
 
 ### Spec (`packages/spec`)
 
