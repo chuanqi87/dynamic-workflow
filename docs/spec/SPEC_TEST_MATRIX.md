@@ -63,3 +63,10 @@ DFX 加固行为,都至少映射到一个自动化测试。测试使用 `MockAda
 | 逐代理工具控制(host 配置 `defaultTools`/`agentTools`) | host | `read-config.test.ts` → "readToolConfig" 区块;`opencode-adapter.test.ts` → "forwards a per-prompt tools map" |
 | question() 人在回路 | M8 | `dfx.test.ts` → "M8 question()";`run-manager.test.ts` → "ask()/answer()/cancel unblocks" |
 | `agent-start.group` 编排遥测 | §7 遥测 | `orchestration-metadata.test.ts` → "parallel children share a groupId" / "pipeline stages carry stageIndex" / "parallel nested in a pipeline stage links parentId" / "group ids are stable across a re-run" |
+| **Codex: agentType ignored / listAgents returns `[]`** | §6 Codex host | `packages/host-codex/test/codex-adapter.test.ts` → "listAgents returns empty array (codex has no named subagents)" |
+| **Codex: token usage from `turn.completed`** | §6 Codex host | `packages/host-codex/test/codex-adapter.test.ts` → "runAgent returns final agent_message text and turn usage" |
+| **Codex: structured output via `outputSchema`** | §6 Codex host | `packages/host-codex/test/codex-adapter.test.ts` → "passes schema as outputSchema in TurnOptions and surfaces structured output" / "capabilities declares structuredOutput true" |
+| **Codex: error classification retriable** | §6 Codex host | `packages/host-codex/test/codex-adapter.test.ts` → "turn.failed marks errored and classifies 429 as retriable" / "turn.failed with auth error is classified as terminal (non-retriable)" |
+| **Codex: transcript translation** | §6 Codex host | `packages/host-codex/test/codex-transcript.test.ts` → "emits a delta per completed agent_message item" / "turn.completed stamps output tokens onto the last assistant message" |
+| **Codex: headless run end-to-end** | §6 Codex host | `packages/host-codex/test/cli-runner.test.ts` → "runs a one-agent workflow and returns its result" |
+| **Codex: MCP server handlers** | §6 Codex host | `packages/host-codex/test/mcp-entry.test.ts` → "run executes an inline script end-to-end and returns output + runId in metadata" |

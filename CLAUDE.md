@@ -6,17 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A portable dynamic-workflow runtime. A single workflow script — plain JavaScript that
 deterministically orchestrates sub-agents via injected globals (`agent`, `parallel`,
-`pipeline`, `phase`, `log`, `workflow`, `args`, `budget`) — runs **unchanged** on two
-hosts: Claude Code's native `Workflow` tool, *or* opencode via this plugin. The portability
-contract lives in one place: [`docs/spec/WORKFLOW_SCRIPT_SPEC.md`](./docs/spec/WORKFLOW_SCRIPT_SPEC.md).
+`pipeline`, `phase`, `log`, `workflow`, `args`, `budget`) — runs **unchanged** on three
+hosts: Claude Code's native `Workflow` tool, opencode via `@workflow/host-opencode`, or
+OpenAI Codex via `@workflow/host-codex`. The portability contract lives in one place:
+[`docs/spec/WORKFLOW_SCRIPT_SPEC.md`](./docs/spec/WORKFLOW_SCRIPT_SPEC.md).
 
 ## Commands
 
 ```sh
 bun install
-bun run build                                   # tsc -b across all packages (also the typecheck)
-bun run typecheck                               # alias for tsc -b
-bun test packages/core/test packages/host-opencode/test  # full suite (~90 tests, offline)
+bun run build                                   # tsc -b across all packages + Vite dashboard build (also the typecheck)
+bun run typecheck                               # alias for tsc -b only (no Vite)
+bun test packages/core/test packages/host-support/test packages/host-opencode/test packages/host-codex/test  # full suite (offline)
 bun test packages/core/test/engine.test.ts      # run one test file
 bun test packages/core/test -t "budget"         # run tests matching a name
 bun run scripts/portability-check.ts            # validate example scripts against the spec
@@ -30,13 +31,22 @@ they cost money and need auth, so the offline suite above covers everything else
 
 ## Architecture
 
-Two packages, host-agnostic core with a single boundary to each platform; the
-portability contract lives in `docs/spec/` as plain documentation (not a package):
+Three packages plus `host-codex`, host-agnostic core with a single boundary to each
+platform; shared host infrastructure in `host-support`; the portability contract lives
+in `docs/spec/` as plain documentation (not a package):
 
 ```
 @workflow/core           host-agnostic runtime (sandbox, validator, orchestration)
   └── HostAdapter        the ONLY interface to a concrete platform
-@workflow/host-opencode  opencode adapter + plugin + headless CLI
+@workflow/host-support   shared host infrastructure: dashboard UI, run lifecycle (RunManager),
+                         worktree isolation, journal helpers, CLI argv parser, resolve-source.
+                         Reused by both host-opencode and host-codex. NOT part of the
+                         portability contract, but allowed to depend on the dashboard
+                         (only core must stay pure).
+@workflow/host-opencode  opencode adapter + plugin + headless CLI (workflow-run)
+@workflow/host-codex     Codex adapter + headless CLI (workflow-run-codex) + MCP server
+                         (workflow-codex-mcp). Workflow name registry: .codex/workflows/
+                         (project) and ~/.codex/workflows/ (global).
 docs/spec/               contract, authoring guide, example scripts (docs only, no package)
 ```
 
@@ -44,9 +54,10 @@ docs/spec/               contract, authoring guide, example scripts (docs only, 
 
 Claude Code's workflow runtime is native and closed. This project does **not** modify it —
 it *mirrors its contract*. The core injects the same environment globals and enforces the
-same sandbox rules; `@workflow/host-opencode` maps those onto the opencode SDK. Same script,
-two hosts. Anything outside the contract (e.g. the dashboard) is opencode-only and must not
-leak into core.
+same sandbox rules; `@workflow/host-opencode` maps those onto the opencode SDK and
+`@workflow/host-codex` maps them onto the Codex SDK. Same script, three hosts. Anything
+outside the contract (e.g. the dashboard) lives in `host-support` and must not leak into
+core.
 
 ### Core (`packages/core/src`)
 
@@ -72,7 +83,25 @@ leak into core.
   `structured-output.ts` (schema-constrained output via ajv), `progress-reporter.ts`,
   `script-loader.ts`.
 
-### Host (`packages/host-opencode/src`)
+### Host Support (`packages/host-support/src`)
+
+Shared infrastructure consumed by both `host-opencode` and `host-codex`. **Not part of
+the portability contract**, but allowed to depend on the dashboard (only `core` stays pure).
+
+- `run-manager.ts` — `RunManager`: in-process run lifecycle (begin/cancel/status, abort
+  wiring, persistent run index, crash recovery for orphaned runs). Used by both hosts.
+- `worktree.ts` — `createWorktree(baseDir, id, log?)`: git-worktree isolation, shared
+  signature used by both adapters.
+- `journal.ts` — file-backed journal sink helpers, shared across hosts.
+- `cli-helpers.ts` / `resolve-source.ts` — CLI argv parser (`parseArgv`) and workflow
+  source resolution (inline script, file path, or name registry lookup).
+- `dashboard/` — localhost web UI (progress tree + per-agent conversation streaming).
+  Vite-built to `packages/host-support/dashboard-dist/` by `bun run build:dashboard`.
+  The web app under `web/` uses its own `web/tsconfig.json` and is **not** included in
+  the root `tsc -b`. `buildGraph` (a pure function deriving the React Flow graph from a
+  run snapshot) lives in `src/dashboard/` and is covered by the offline `bun test` suite.
+
+### Host opencode (`packages/host-opencode/src`)
 
 - [plugin-entry.ts](./packages/host-opencode/src/plugin-entry.ts) — the opencode plugin.
   Registers the `workflow` tool (run/author), `workflow_cancel`, `workflow_answer`,
@@ -83,15 +112,22 @@ leak into core.
   error classification for retry).
 - [cli-runner.ts](./packages/host-opencode/src/cli-runner.ts) — `workflow-run` headless bin
   using an embedded opencode server (CI, batch, cross-host verification).
-- [run-manager.ts](./packages/host-opencode/src/run-manager.ts) — in-process run lifecycle
-  (begin/cancel/status, abort wiring).
-- `dashboard/` — opencode-only localhost web UI (progress tree + per-agent conversation
-  streaming). **Not part of the portability contract**; disable via `{ "dashboard": false }`.
-  Assets are Vite-built to `packages/host-opencode/dashboard-dist/` (shipped via the package
-  `files` field; git-ignored in source). The web app under `web/` uses its own
-  `web/tsconfig.json` and is **not** included in the root `tsc -b`. `buildGraph` (a pure
-  function that derives the React Flow graph from a run snapshot) lives in `src/dashboard/`
-  and is covered by the offline `bun test` suite.
+
+### Host Codex (`packages/host-codex/src`)
+
+- [codex-adapter.ts](./packages/host-codex/src/codex-adapter.ts) — `CodexAdapter implements
+  HostAdapter`. Each sub-session is one Codex thread (started lazily on first turn). Token
+  usage from `turn.completed`; cost always 0. Structured output via `TurnOptions.outputSchema`;
+  `capabilities.structuredOutput = true`.
+- [codex-sdk.ts](./packages/host-codex/src/codex-sdk.ts) — minimal local typings for
+  `@openai/codex-sdk` (grounded at v0.142.2); keeps adapter unit-testable with a fake.
+- [cli-runner.ts](./packages/host-codex/src/cli-runner.ts) — `workflow-run-codex` headless
+  bin; `parseArgv` and `runHeadlessCodex` entry points.
+- [mcp-entry.ts](./packages/host-codex/src/mcp-entry.ts) — `workflow-codex-mcp` MCP server;
+  exposes `workflow/run`, `workflow/cancel`, `workflow/status`, `workflow/answer` tools.
+- [resolve-source.ts](./packages/host-codex/src/resolve-source.ts) — delegates to
+  `@workflow/host-support` with Codex-specific registry dirs (`.codex/workflows/` project +
+  `~/.codex/workflows/` global).
 
 ### Spec (`docs/spec`)
 
@@ -109,4 +145,5 @@ so the model can author contract-compliant scripts. `examples/` are validated by
 - Cross-package imports use the `.js` extension on `.ts` source (NodeNext/bundler resolution).
 - When changing anything observable across hosts, the change belongs in the contract: update
   the spec, the test matrix, and keep the validator in sync. Host-only features stay in
-  `host-opencode` and never become assumptions in `core`.
+  `host-opencode` or `host-codex` (or `host-support` if shared) and never become
+  assumptions in `core`.

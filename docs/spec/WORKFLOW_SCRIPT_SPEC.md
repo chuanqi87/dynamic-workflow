@@ -148,6 +148,20 @@ token 预算。`total` 为 `null` 表示无上限。一旦预算耗尽,后续的
 超出的调用排队。`parallel`/`pipeline` 可以被传入数千个条目;同一时刻只有上限内的
 数量在运行。
 
+### Codex host
+
+The `@workflow/host-codex` adapter maps `agent()` onto Codex threads. Capability notes:
+
+- **`agentType` is ignored.** Codex has no named subagents; `listAgents()` returns `[]`.
+- **`cost` is reported as 0.** Codex exposes no per-turn USD cost; only token usage
+  (which feeds `budget`). `RunSummary.costUsd` will be 0 under Codex.
+- **Structured output** uses the turn's `outputSchema`; the core still re-validates
+  with ajv. `capabilities.structuredOutput` is `true`.
+- **`question()`** is answerable only when a dashboard/MCP host is present to resolve it;
+  otherwise it resolves to `opts.default ?? null`, exactly as the contract requires.
+- **Worktree isolation** uses the same git-worktree mechanism as opencode; the Codex
+  thread runs with `workingDirectory` set to the worktree.
+
 ---
 
 ## 7. 进度事件遥测（host 内部，非脚本可见）
