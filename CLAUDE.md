@@ -31,9 +31,9 @@ they cost money and need auth, so the offline suite above covers everything else
 
 ## Architecture
 
-Three packages plus `host-codex`, host-agnostic core with a single boundary to each
-platform; shared host infrastructure in `host-support`; the portability contract lives
-in `docs/spec/` as plain documentation (not a package):
+Four packages: a host-agnostic core, a shared host-support layer, and two host adapters
+(opencode, codex). Each has a single boundary to its platform; the portability contract
+lives in `docs/spec/` as plain documentation (not a package):
 
 ```
 @workflow/core           host-agnostic runtime (sandbox, validator, orchestration)
@@ -92,7 +92,7 @@ the portability contract**, but allowed to depend on the dashboard (only `core` 
   wiring, persistent run index, crash recovery for orphaned runs). Used by both hosts.
 - `worktree.ts` — `createWorktree(baseDir, id, log?)`: git-worktree isolation, shared
   signature used by both adapters.
-- `journal.ts` — file-backed journal sink helpers, shared across hosts.
+- `file-journal.ts` — file-backed journal sink helpers, shared across hosts.
 - `cli-helpers.ts` / `resolve-source.ts` — CLI argv parser (`parseArgv`) and workflow
   source resolution (inline script, file path, or name registry lookup).
 - `dashboard/` — localhost web UI (progress tree + per-agent conversation streaming).
@@ -124,7 +124,7 @@ the portability contract**, but allowed to depend on the dashboard (only `core` 
 - [cli-runner.ts](./packages/host-codex/src/cli-runner.ts) — `workflow-run-codex` headless
   bin; `parseArgv` and `runHeadlessCodex` entry points.
 - [mcp-entry.ts](./packages/host-codex/src/mcp-entry.ts) — `workflow-codex-mcp` MCP server;
-  exposes `workflow/run`, `workflow/cancel`, `workflow/status`, `workflow/answer` tools.
+  exposes `workflow`, `workflow_cancel`, `workflow_status`, `workflow_answer` tools.
 - [resolve-source.ts](./packages/host-codex/src/resolve-source.ts) — delegates to
   `@workflow/host-support` with Codex-specific registry dirs (`.codex/workflows/` project +
   `~/.codex/workflows/` global).

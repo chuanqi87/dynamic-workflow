@@ -158,10 +158,10 @@ workflow-run-codex docs/spec/examples/hello.workflow.js
 ```
 
 MCP 服务器暴露四个工具:
-- `workflow/run` — 运行工作流(内联脚本、文件路径或已注册名称)
-- `workflow/cancel` — 按 runId 取消运行中的工作流
-- `workflow/status` — 查询运行状态
-- `workflow/answer` — 回答工作流中的 `question()` 挂起
+- `workflow` — 运行工作流(内联脚本、文件路径或已注册名称)
+- `workflow_cancel` — 按 runId 取消运行中的工作流
+- `workflow_status` — 查询运行状态
+- `workflow_answer` — 回答工作流中的 `question()` 挂起
 
 ### 工作流名称注册表
 
