@@ -18,14 +18,14 @@
   "bin": {
     "workflow-run": "./dist/cli-runner.js"
   },
-  "files": ["dist", "src", "dashboard-dist"],
+  "files": ["dist", "src"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && bun run build:dashboard",
-    "build:dashboard": "vite build --config web/vite.config.ts",
+    "build": "tsc -p tsconfig.json",
     "test": "bun test"
   },
   "dependencies": {
-    "@workflow/core": "workspace:*"
+    "@workflow/core": "workspace:*",
+    "@workflow/host-support": "workspace:*"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.14.0",
@@ -33,16 +33,7 @@
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.14.37",
-    "@opencode-ai/sdk": "^1.14.37",
-    "@types/dagre": "^0.7.54",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "@xyflow/react": "^12.11.1",
-    "dagre": "^0.8.5",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "vite": "^8.1.0"
+    "@opencode-ai/sdk": "^1.14.37"
   },
   "license": "MIT"
 }

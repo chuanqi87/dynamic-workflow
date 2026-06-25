@@ -5,8 +5,7 @@ import { basename, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createOpencode } from "@opencode-ai/sdk";
 import { runWorkflow, type RuntimeConfig } from "@workflow/core";
-import { FileJournalSink, fileJournalSource, journalPath } from "./file-journal.js";
-import { autoConcurrency } from "./plugin-entry.js";
+import { autoConcurrency, FileJournalSink, fileJournalSource, journalPath } from "@workflow/host-support";
 import { OpencodeAdapter } from "./opencode-adapter.js";
 import { resolveSource } from "./resolve-source.js";
 

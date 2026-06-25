@@ -26,19 +26,11 @@
       },
       "dependencies": {
         "@workflow/core": "workspace:*",
+        "@workflow/host-support": "workspace:*",
       },
       "devDependencies": {
         "@opencode-ai/plugin": "^1.14.37",
         "@opencode-ai/sdk": "^1.14.37",
-        "@types/dagre": "^0.7.54",
-        "@types/react": "^19.2.17",
-        "@types/react-dom": "^19.2.3",
-        "@vitejs/plugin-react": "^6.0.3",
-        "@xyflow/react": "^12.11.1",
-        "dagre": "^0.8.5",
-        "react": "^19.2.7",
-        "react-dom": "^19.2.7",
-        "vite": "^8.1.0",
       },
       "peerDependencies": {
         "@opencode-ai/plugin": ">=1.14.0",

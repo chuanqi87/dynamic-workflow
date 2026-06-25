@@ -1,23 +1,25 @@
-import { cpus } from "node:os";
 import { type Plugin, tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { runWorkflow } from "@workflow/core";
+import {
+  autoConcurrency,
+  DashboardServer,
+  FileJournalSink,
+  fileJournalSource,
+  indexPath,
+  journalPath,
+  persistScript,
+  RunManager,
+} from "@workflow/host-support";
 import { AUTHORING_GUIDE } from "./authoring-guide.js";
-import { DashboardServer } from "./dashboard/server.js";
-import { indexPath } from "./dashboard/run-index.js";
-import type { OpencodeEventLike } from "./dashboard/transcript.js";
-import { FileJournalSink, fileJournalSource, journalPath } from "./file-journal.js";
 import { OpencodeAdapter } from "./opencode-adapter.js";
+import { OpencodeTranscriptTranslator, type OpencodeEventLike } from "./opencode-transcript.js";
 import { readConfig, readToolConfig } from "./read-config.js";
 import { resolveSource } from "./resolve-source.js";
-import { RunManager } from "./run-manager.js";
-import { persistScript } from "./script-store.js";
 
-/** Default concurrency mirrors Claude Code: min(16, cores - 2), floor 1. */
-export function autoConcurrency(): number {
-  const cores = cpus().length || 4;
-  return Math.min(16, Math.max(1, cores - 2));
-}
+export { autoConcurrency };
+
+const translator = new OpencodeTranscriptTranslator();
 
 /**
  * Swallows the adapter's textual progress in the plugin/TUI path. opencode
@@ -90,7 +92,9 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
     ...(dashboard
       ? {
           event: async ({ event }: { event: unknown }) => {
-            manager.registry.applyOpencodeEvent(event as OpencodeEventLike);
+            for (const d of translator.translate(event as OpencodeEventLike)) {
+              manager.registry.applyTranscript(d);
+            }
           },
         }
       : {}),
