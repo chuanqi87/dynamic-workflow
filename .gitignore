@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 .workflow/
 .DS_Store
+dashboard-dist/
