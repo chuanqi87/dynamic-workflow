@@ -21,3 +21,6 @@ export { buildGraph } from "./dashboard/buildGraph.js";
 export type { GraphRun, GraphAgent, GraphNode, GraphEdge } from "./dashboard/buildGraph.js";
 export { RunManager } from "./run-manager.js";
 export type { RunManagerOptions } from "./run-manager.js";
+export { createWorktree } from "./worktree.js";
+export { resolveSourceFrom } from "./resolve-source.js";
+export type { SourceInput } from "./resolve-source.js";

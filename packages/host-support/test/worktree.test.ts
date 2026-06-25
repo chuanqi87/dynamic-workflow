@@ -4,8 +4,7 @@ import { access, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { OpencodeClient } from "@opencode-ai/sdk";
-import { OpencodeAdapter } from "../src/opencode-adapter.js";
+import { createWorktree } from "../src/worktree.js";
 
 const run = promisify(execFile);
 const exists = (p: string) =>
@@ -25,17 +24,10 @@ async function initRepo(): Promise<string> {
   return dir;
 }
 
-const adapter = (dir: string) =>
-  new OpencodeAdapter({} as OpencodeClient, {
-    rootDirectory: dir,
-    toast: false,
-    logStream: { write() {} },
-  });
-
-describe("OpencodeAdapter.createWorktree", () => {
+describe("createWorktree", () => {
   test("creates an isolated worktree and removes it when unchanged", async () => {
     const repo = await initRepo();
-    const wt = await adapter(repo).createWorktree(repo, "agent-1");
+    const wt = await createWorktree(repo, "agent-1");
     expect(wt.dir).not.toBe(repo);
     expect(await exists(wt.dir)).toBe(true);
     const inside = await run("git", ["rev-parse", "--is-inside-work-tree"], { cwd: wt.dir });
@@ -47,16 +39,16 @@ describe("OpencodeAdapter.createWorktree", () => {
 
   test("preserves a dirty worktree on cleanup", async () => {
     const repo = await initRepo();
-    const wt = await adapter(repo).createWorktree(repo, "agent-2");
+    const wt = await createWorktree(repo, "agent-2");
     await writeFile(join(wt.dir, "scratch.txt"), "work in progress\n");
     await wt.cleanup();
     expect(await exists(wt.dir)).toBe(true); // dirty → kept
-    expect(await exists(join(wt.dir, ".oc-wf-preserved"))).toBe(true);
+    expect(await exists(join(wt.dir, ".wf-preserved"))).toBe(true);
   });
 
   test("degrades to the shared dir when not a git repo", async () => {
     const plain = await mkdtemp(join(tmpdir(), "wf-plain-"));
-    const wt = await adapter(plain).createWorktree(plain, "agent-3");
+    const wt = await createWorktree(plain, "agent-3");
     expect(wt.dir).toBe(plain); // no isolation, no throw
     await wt.cleanup();
   });
