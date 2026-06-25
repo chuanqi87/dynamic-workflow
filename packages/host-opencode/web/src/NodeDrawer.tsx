@@ -24,7 +24,7 @@ export function NodeDrawer({
         <strong style={{ flex: 1 }}>Agent detail</strong>
         <button onClick={onClose} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 18 }}>×</button>
       </header>
-      <div style={{ overflowY: "auto", padding: 12 }}>
+      <div style={{ overflowY: "auto", padding: 12, flex: 1, minHeight: 0 }}>
         {msgs.length === 0 && <div style={{ color: "var(--muted)" }}>No messages yet.</div>}
         {msgs.map((m) => (
           <div key={m.messageId} style={{ borderLeft: "2px solid var(--border)", padding: "4px 0 4px 10px", margin: "8px 0", whiteSpace: "pre-wrap" }}>

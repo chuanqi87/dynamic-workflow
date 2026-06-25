@@ -34,6 +34,7 @@ export interface GraphEdge {
   id: string;
   source: string;
   target: string;
+  kind?: "containment" | "flow";
 }
 
 const phaseId = (title: string): string => `phase:${title}`;
@@ -49,7 +50,7 @@ export function buildGraph(run: GraphRun): { nodes: GraphNode[]; edges: GraphEdg
     nodes.push({ id: phaseId(title), type: "phase", label: title, data: { order: i } });
     const prev = phases[i - 1];
     if (prev !== undefined) {
-      edges.push({ id: `e:${phaseId(prev)}->${phaseId(title)}`, source: phaseId(prev), target: phaseId(title) });
+      edges.push({ id: `e:${phaseId(prev)}->${phaseId(title)}`, source: phaseId(prev), target: phaseId(title), kind: "flow" });
     }
   });
   const phaseSet = new Set(phases);
@@ -110,7 +111,14 @@ export function buildGraph(run: GraphRun): { nodes: GraphNode[]; edges: GraphEdg
     });
   });
 
-  // 4) Pipeline stage edges: same group id + same item index, stageIndex k -> k+1.
+  // 4) Containment edges: parentId -> node.id for every group/agent with a parentId.
+  for (const node of nodes) {
+    if ((node.type === "group" || node.type === "agent") && node.parentId !== undefined) {
+      edges.push({ id: `c:${node.parentId}->${node.id}`, source: node.parentId, target: node.id, kind: "containment" });
+    }
+  }
+
+  // 5) Pipeline stage edges: same group id + same item index, stageIndex k -> k+1.
   const byItem = new Map<string, GraphAgent[]>();
   for (const a of run.agents) {
     const g = a.group;
@@ -133,7 +141,7 @@ export function buildGraph(run: GraphRun): { nodes: GraphNode[]; edges: GraphEdg
       // Every agent in run.agents was registered in agentIds above, so these lookups are total.
       const from = agentIds.get(sorted[i - 1]!)!;
       const to = agentIds.get(sorted[i]!)!;
-      edges.push({ id: `e:${from}->${to}`, source: from, target: to });
+      edges.push({ id: `e:${from}->${to}`, source: from, target: to, kind: "flow" });
     }
   }
 

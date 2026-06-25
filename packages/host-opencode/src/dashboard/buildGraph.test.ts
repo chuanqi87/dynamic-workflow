@@ -77,4 +77,36 @@ describe("buildGraph", () => {
     };
     expect(buildGraph(run)).toEqual(buildGraph(run));
   });
+
+  test("every group and agent node is reachable from a phase via edges", () => {
+    const run: GraphRun = {
+      phases: ["Work"],
+      agents: [
+        agent({ label: "pa", phase: "Work", sessionId: "sa", group: { id: "grp1", kind: "parallel", index: 0 } }),
+        agent({ label: "pb", phase: "Work", sessionId: "sb", group: { id: "grp1", kind: "parallel", index: 1 } }),
+      ],
+    };
+    const { nodes, edges } = buildGraph(run);
+
+    // Collect all edge targets and sources.
+    const edgeTargets = new Set(edges.map((e) => e.target));
+
+    // Every non-phase node must appear as a target of at least one edge.
+    const nonPhaseNodes = nodes.filter((n) => n.type !== "phase");
+    for (const n of nonPhaseNodes) {
+      expect(edgeTargets.has(n.id)).toBe(true);
+    }
+
+    // The group node must have an incoming edge whose source is its phase.
+    const groupNode = nodes.find((n) => n.type === "group" && n.id === "group:grp1")!;
+    expect(groupNode).toBeDefined();
+    expect(edges.some((e) => e.source === "phase:Work" && e.target === groupNode.id)).toBe(true);
+
+    // Each parallel agent must have an incoming edge whose source is the group.
+    const agentNodes = nodes.filter((n) => n.type === "agent");
+    expect(agentNodes).toHaveLength(2);
+    for (const a of agentNodes) {
+      expect(edges.some((e) => e.source === "group:grp1" && e.target === a.id)).toBe(true);
+    }
+  });
 });
