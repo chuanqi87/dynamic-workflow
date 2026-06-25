@@ -9,8 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b && bun run --filter='@workflow/host-opencode' build:dashboard",
-    "test": "bun test packages/core/test packages/host-opencode/test",
+    "build": "tsc -b && bun run --filter='@workflow/host-support' build:dashboard",
+    "test": "bun test packages/core/test packages/host-support/test packages/host-opencode/test",
     "typecheck": "tsc -b",
     "portability-check": "bun run scripts/portability-check.ts"
   },

@@ -1,0 +1,32 @@
+{
+  "name": "@workflow/host-support",
+  "version": "0.1.0",
+  "description": "Host-agnostic infrastructure for workflow hosts: dashboard, run lifecycle, worktree, journal.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "files": ["dist", "src", "dashboard-dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && bun run build:dashboard",
+    "build:dashboard": "vite build --config web/vite.config.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@workflow/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7.54",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@xyflow/react": "^12.11.1",
+    "dagre": "^0.8.5",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.1.0"
+  },
+  "license": "MIT"
+}
