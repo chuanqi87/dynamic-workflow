@@ -44,6 +44,7 @@ const AMBIENT_GLOBALS = new Set([
   "phase",
   "log",
   "workflow",
+  "question",
   "args",
   "budget",
   "meta",

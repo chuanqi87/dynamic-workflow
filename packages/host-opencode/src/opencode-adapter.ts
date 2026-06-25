@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type {
   AgentRequest,
@@ -20,6 +23,12 @@ export interface OpencodeAdapterOptions {
   logStream?: { write(s: string): void };
   /** Tap every progress event (e.g. to feed the web dashboard). */
   onEvent?: (ev: ProgressEvent) => void;
+  /** Resolve a human-in-the-loop question (e.g. via the dashboard / a tool). */
+  onQuestion?: (input: {
+    question: string;
+    options?: string[];
+    timeoutMs?: number;
+  }) => Promise<string | null>;
 }
 
 /**
@@ -34,6 +43,7 @@ export class OpencodeAdapter implements HostAdapter {
   private readonly toast: boolean;
   private readonly logStream: { write(s: string): void };
   private readonly onEvent?: (ev: ProgressEvent) => void;
+  private readonly onQuestion?: OpencodeAdapterOptions["onQuestion"];
   /** Per-session count of assistant messages already accounted for. */
   private readonly counted = new Map<string, number>();
 
@@ -46,6 +56,17 @@ export class OpencodeAdapter implements HostAdapter {
     this.toast = opts.toast ?? true;
     this.logStream = opts.logStream ?? process.stderr;
     this.onEvent = opts.onEvent;
+    this.onQuestion = opts.onQuestion;
+  }
+
+  /** Host-in-the-loop: delegate to the injected resolver (dashboard / tool). */
+  async askQuestion(input: {
+    question: string;
+    options?: string[];
+    timeoutMs?: number;
+  }): Promise<string | null> {
+    if (!this.onQuestion) return null;
+    return this.onQuestion(input);
   }
 
   async createSubSession(parentId: string | undefined, title: string): Promise<string> {
@@ -133,6 +154,47 @@ export class OpencodeAdapter implements HostAdapter {
     this.counted.delete(sessionId);
   }
 
+  /**
+   * Create an isolated git worktree for an agent. On cleanup, an unchanged
+   * worktree is removed; a dirty one is preserved (marked) for inspection.
+   * If `baseDir` is not a git repo (or git is unavailable), gracefully degrades
+   * to running in `baseDir` (no isolation) rather than failing the agent.
+   */
+  async createWorktree(
+    baseDir: string,
+    id: string,
+  ): Promise<{ dir: string; cleanup(): Promise<void> }> {
+    const noIsolation = { dir: baseDir, cleanup: async () => {} };
+    const isRepo = await git(["rev-parse", "--is-inside-work-tree"], baseDir)
+      .then((r) => r.code === 0)
+      .catch(() => false);
+    if (!isRepo) {
+      this.logStream.write(
+        "⚠ worktree isolation requested but the directory is not a git repo; running shared\n",
+      );
+      return noIsolation;
+    }
+    const dir = join(baseDir, ".workflow", "worktrees", `oc-wf-${sanitize(id)}`);
+    const add = await git(["worktree", "add", "--detach", dir], baseDir);
+    if (add.code !== 0) {
+      this.logStream.write(`⚠ git worktree add failed (${add.stderr.trim()}); running shared\n`);
+      return noIsolation;
+    }
+    return {
+      dir,
+      cleanup: async () => {
+        const status = await git(["status", "--porcelain"], dir).catch(() => null);
+        const dirty = !status || status.code !== 0 || status.stdout.trim() !== "";
+        if (dirty) {
+          await writeFile(join(dir, ".oc-wf-preserved"), `${id}\n`).catch(() => undefined);
+          this.logStream.write(`⚠ worktree ${dir} has changes — preserved for inspection\n`);
+          return;
+        }
+        await git(["worktree", "remove", "--force", dir], baseDir).catch(() => undefined);
+      },
+    };
+  }
+
   /** Sum tokens/cost of assistant messages produced since the last turn. */
   private async turnUsage(
     sessionId: string,
@@ -218,6 +280,26 @@ function abortedResult(): AgentResult {
     aborted: true,
     errored: false,
   };
+}
+
+interface GitResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Run a git command, resolving (never rejecting) with its exit code + output. */
+function git(args: string[], cwd: string): Promise<GitResult> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const code = err ? (typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : 1) : 0;
+      resolve({ code, stdout: stdout?.toString() ?? "", stderr: stderr?.toString() ?? "" });
+    });
+  });
+}
+
+function sanitize(s: string): string {
+  return s.replace(/[^\w.-]/g, "").slice(0, 64) || "wt";
 }
 
 interface AnyMessage {

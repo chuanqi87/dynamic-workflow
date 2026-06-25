@@ -1,4 +1,10 @@
-import { LIMITS, type Budget, type WorkflowGlobals, type WorkflowMeta } from "./types.js";
+import {
+  LIMITS,
+  type Budget,
+  type QuestionOpts,
+  type WorkflowGlobals,
+  type WorkflowMeta,
+} from "./types.js";
 import type { AgentRunner } from "./agent-runner.js";
 import type { ProgressReporter } from "./progress-reporter.js";
 
@@ -76,6 +82,8 @@ export interface GlobalsDeps {
   phaseRef: { current?: string };
   /** Nested workflow runner; throws if nesting depth is exceeded. */
   workflow: (nameOrRef: string | { scriptPath: string }, args?: unknown) => Promise<unknown>;
+  /** Host-in-the-loop question resolver. */
+  question: (prompt: string, opts?: QuestionOpts) => Promise<string | null>;
 }
 
 /** Assemble the ambient globals injected into a workflow script body. */
@@ -96,6 +104,7 @@ export function buildGlobals(deps: GlobalsDeps): WorkflowGlobals & { meta: Workf
     },
     log: (message: string) => deps.reporter.log(message),
     workflow: deps.workflow,
+    question: deps.question,
     args: deps.args,
     budget: deps.budget,
     meta: deps.meta,

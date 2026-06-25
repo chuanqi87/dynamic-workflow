@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OpencodeClient } from "@opencode-ai/sdk";
@@ -61,19 +61,44 @@ describe("WorkflowPlugin", () => {
   test("runs an inline script end-to-end through the opencode adapter", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
     const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
-    const result = await hooks.tool!.workflow!.execute(
-      {
-        script: `export const meta = { name: "t", description: "d" };
+    const script = `export const meta = { name: "t", description: "d" };
 const a = await agent("hi");
 const b = await parallel([() => agent("x"), () => agent("y")]);
-return { a, b };`,
-      },
-      fakeCtx(dir),
-    );
+return { a, b };`;
+    const result = await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
     const out = typeof result === "string" ? result : result.output;
-    const parsed = JSON.parse(out);
+    const parsed = JSON.parse(out.split("\n\nScript saved to ")[0]!);
     expect(parsed.a).toBe("echo:hi");
     expect(parsed.b).toEqual(["echo:x", "echo:y"]);
+  });
+
+  test("persists a generated inline script to .workflow/scripts and reports its path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const script = `export const meta = { name: "t", description: "d" };\nreturn await agent("hi");`;
+    const result = await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
+
+    const meta = typeof result === "string" ? undefined : (result.metadata as { scriptPath?: string });
+    const saved = meta?.scriptPath;
+    // runId derives from ctx.messageID ("m1") → wf-m1
+    expect(saved).toBe(join(dir, ".workflow", "scripts", "wf-m1.js"));
+    expect(await readFile(saved!, "utf8")).toBe(script);
+    const out = typeof result === "string" ? result : result.output;
+    expect(out).toContain("Script saved to");
+  });
+
+  test("does not persist a script sourced from scriptPath (already on disk)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    await writeFile(
+      join(dir, "wf.js"),
+      `export const meta = { name: "t", description: "d" };\nreturn await agent("hi");`,
+    );
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const result = await hooks.tool!.workflow!.execute({ scriptPath: "wf.js" }, fakeCtx(dir));
+
+    const meta = typeof result === "string" ? undefined : (result.metadata as { scriptPath?: string });
+    expect(meta?.scriptPath).toBeUndefined();
+    await expect(access(join(dir, ".workflow", "scripts", "wf-m1.js"))).rejects.toThrow();
   });
 
   test("rejects an invalid script via the validator", async () => {

@@ -6,8 +6,17 @@ import {
   type TranscriptMessage,
 } from "./transcript.js";
 
-export type RunStatus = "running" | "completed" | "failed";
+export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type AgentStatus = "running" | "done" | "null" | "retrying";
+
+/** A persisted run entry imported as a read-only historical view. */
+export interface HistoryEntry {
+  runId: string;
+  name: string;
+  status: RunStatus;
+  startedAt: number;
+  summary?: RunSummary;
+}
 
 export interface AgentView {
   sessionId?: string;
@@ -30,6 +39,8 @@ export interface RunView {
   agents: AgentView[];
   summary?: RunSummary;
   startedAt: number;
+  /** Set while the run is paused awaiting a human answer (question()). */
+  pendingQuestion?: { question: string; options?: string[] };
 }
 
 export type RegistryChange = { kind: "run"; runId: string } | { kind: "session"; sessionId: string };
@@ -73,6 +84,41 @@ export class RunRegistry {
       startedAt: this.now(),
     });
     if (mainSessionId) this.sessionToRun.set(mainSessionId, runId);
+    this.notify({ kind: "run", runId });
+  }
+
+  /**
+   * Import persisted runs as read-only historical views (e.g. after restart).
+   * Live runs already present in memory take precedence and are not overwritten.
+   */
+  importHistory(entries: HistoryEntry[]): void {
+    for (const e of entries) {
+      if (this.runs.has(e.runId)) continue;
+      this.runs.set(e.runId, {
+        runId: e.runId,
+        name: e.name,
+        status: e.status,
+        phases: [],
+        agents: [],
+        summary: e.summary,
+        startedAt: e.startedAt,
+      });
+    }
+    this.notify({ kind: "run", runId: entries[0]?.runId ?? "" });
+  }
+
+  /** Mark a run as awaiting a human answer (drives the dashboard prompt). */
+  setPendingQuestion(runId: string, q: { question: string; options?: string[] }): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    run.pendingQuestion = q;
+    this.notify({ kind: "run", runId });
+  }
+
+  clearPendingQuestion(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run || !run.pendingQuestion) return;
+    run.pendingQuestion = undefined;
     this.notify({ kind: "run", runId });
   }
 

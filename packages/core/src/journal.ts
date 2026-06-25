@@ -132,6 +132,17 @@ export class Journal {
  */
 export function parseJournal(text: string): Map<string, unknown> {
   const seed = new Map<string, unknown>();
+  for (const e of agentEntries(text)) seed.set(e.key, e.payload);
+  return seed;
+}
+
+/** Ordered successful agent results, for prefix-mode resume. */
+export function parseJournalOrdered(text: string): Array<{ key: string; payload: unknown }> {
+  return agentEntries(text);
+}
+
+function agentEntries(text: string): Array<{ key: string; payload: unknown }> {
+  const out: Array<{ key: string; payload: unknown }> = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -142,8 +153,34 @@ export function parseJournal(text: string): Map<string, unknown> {
       continue; // tolerate a torn final line / corruption
     }
     if (ev.type === "agent" && ev.key !== undefined && ev.payload !== null && ev.payload !== undefined) {
-      seed.set(ev.key, ev.payload);
+      out.push({ key: ev.key, payload: ev.payload });
     }
   }
-  return seed;
+  return out;
+}
+
+/**
+ * Prefix-mode resume: replays cached results in their original order while keys
+ * match. On the first mismatch (a changed/new call) it "breaks" — that call and
+ * everything after it run live, even if their prompts are unchanged. This
+ * catches script drift that keyed resume would miss. NOTE: with concurrent
+ * `agent()` calls the order is non-deterministic, so prefix mode is best-effort
+ * for parallel sections; keyed mode is the concurrency-safe default.
+ */
+export class PrefixReplay {
+  private cursor = 0;
+  private broken = false;
+
+  constructor(private readonly ordered: Array<{ key: string; payload: unknown }>) {}
+
+  lookup(key: string): { hit: boolean; value?: unknown } {
+    if (this.broken) return { hit: false };
+    const next = this.ordered[this.cursor];
+    if (next && next.key === key) {
+      this.cursor++;
+      return { hit: true, value: next.payload };
+    }
+    this.broken = true;
+    return { hit: false };
+  }
 }

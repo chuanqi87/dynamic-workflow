@@ -173,6 +173,30 @@ return await parallel([() => agent("a"), () => { throw new Error("boom"); }]);`;
   });
 });
 
+// ── M8 question() host-in-the-loop ──────────────────────────────────────────
+describe("M8 question()", () => {
+  test("resolves to the host's answer when askQuestion is supported", async () => {
+    class QAdapter extends MockAdapter {
+      async askQuestion(input: { question: string }): Promise<string | null> {
+        return input.question.includes("color") ? "blue" : null;
+      }
+    }
+    const adapter = new QAdapter(() => ({ text: "ok" }));
+    const src = `export const meta = { name: "q", description: "d" };
+return await question("favorite color?");`;
+    const { result } = await run(src, adapter);
+    expect(result).toBe("blue");
+  });
+
+  test("falls back to default when the host cannot ask", async () => {
+    const adapter = new MockAdapter(() => ({ text: "ok" }));
+    const src = `export const meta = { name: "q", description: "d" };
+return await question("anything?", { default: "fallback" });`;
+    const { result } = await run(src, adapter);
+    expect(result).toBe("fallback");
+  });
+});
+
 // ── P2-13 phase default model ───────────────────────────────────────────────
 describe("P2-13 phase default model", () => {
   test("uses the phase's model when opts specify none", async () => {

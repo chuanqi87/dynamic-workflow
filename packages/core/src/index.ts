@@ -9,7 +9,15 @@ export { parallel, pipeline } from "./runtime-context.js";
 export { extractJson, buildSchemaEnvelope, runStructured } from "./structured-output.js";
 export { Semaphore } from "./semaphore.js";
 export { BudgetTracker } from "./budget-tracker.js";
-export { Journal, cacheKey, stableStringify, normalizeOpts, parseJournal } from "./journal.js";
+export {
+  Journal,
+  cacheKey,
+  stableStringify,
+  normalizeOpts,
+  parseJournal,
+  parseJournalOrdered,
+  PrefixReplay,
+} from "./journal.js";
 export type { JournalEvent, JournalSink, JournalOptions } from "./journal.js";
 export { ModelAgentMapper } from "./model-agent-mapper.js";
 export { AgentRunner, AgentLimitError, BudgetExceededError } from "./agent-runner.js";

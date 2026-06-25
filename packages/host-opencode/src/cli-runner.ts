@@ -78,14 +78,14 @@ export async function runHeadless(opts: HeadlessOptions): Promise<unknown> {
   }
 }
 
-interface ParsedArgs {
+export interface ParsedArgs {
   scriptPath?: string;
   args?: unknown;
   resume?: string;
   config: RuntimeConfig;
 }
 
-function parseArgv(argv: string[]): ParsedArgs {
+export function parseArgv(argv: string[]): ParsedArgs {
   const out: ParsedArgs = { config: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;

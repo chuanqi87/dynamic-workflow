@@ -1,149 +1,154 @@
-# Workflow Script Spec (v1)
+# 工作流脚本规范(v1）
 
-This is the single source of truth for the **portable workflow script contract**.
-A script that conforms to this spec runs **unchanged** on:
+这是**可移植工作流脚本契约**的唯一可信来源。符合本规范的脚本可以**原封不动**地
+运行在:
 
-- **Claude Code** — via its native `Workflow` tool runtime, and
-- **opencode** — via the `@workflow/host-opencode` plugin in this repo.
+- **Claude Code**——通过其原生的 `Workflow` 工具运行时,以及
+- **opencode**——通过本仓库中的 `@workflow/host-opencode` 插件。
 
-Portability is achieved by honouring one contract, not by transforming scripts.
-Neither host modifies the script; both inject the same ambient globals and apply
-the same sandbox rules.
+可移植性是通过遵守一份契约实现的,而非通过转换脚本。两个宿主都不会修改脚本;
+两者都注入同一套环境全局变量,并施加同样的沙箱规则。
 
 ---
 
-## 1. File shape
+## 1. 文件形态
 
-A workflow script is **plain JavaScript** (not a module, not TypeScript). It has
-exactly two parts:
+一个工作流脚本是**普通 JavaScript**(不是模块,也不是 TypeScript)。它恰好由
+两部分组成:
 
 ```js
-export const meta = { /* pure literal — see §2 */ };
-// ── async function body ── (everything after the meta literal)
+export const meta = { /* 纯字面量 —— 见 §2 */ };
+// ── 异步函数体 ── (meta 字面量之后的所有内容)
 phase("Find");
 const x = await agent("…");
-return { x };          // top-level return yields the workflow result
+return { x };          // 顶层 return 产出工作流的结果
 ```
 
-- The file **must begin** with `export const meta = { … }`.
-- Everything after the meta literal is treated as an **async function body**:
-  it may use top-level `await` and top-level `return`, and it references the
-  ambient globals in §3 directly (do **not** `import` them).
+- 文件**必须以** `export const meta = { … }` 开头。
+- meta 字面量之后的所有内容都被当作**异步函数体**:它可以使用顶层 `await` 与
+  顶层 `return`,并直接引用 §3 中的环境全局变量(**不要** `import` 它们)。
 
-> Why this is neither a real ES module nor a plain script: it combines `export`
-> (module-only) with top-level `return` (script-only). Hosts parse the meta
-> literal in isolation and run the remainder as an async function body.
+> 为什么它既不是真正的 ES 模块也不是普通脚本:它把 `export`(仅模块可用)与
+> 顶层 `return`(仅脚本可用)结合在了一起。宿主会单独解析 meta 字面量,并把
+> 其余部分作为异步函数体运行。
 
 ---
 
-## 2. The `meta` block
+## 2. `meta` 块
 
-`meta` **must be a pure object literal** — no variables, function calls, template
-interpolation, spreads, or computed keys. Allowed fields:
+`meta` **必须是一个纯对象字面量**——不允许变量、函数调用、模板插值、展开或
+计算键。允许的字段:
 
-| field | type | meaning |
+| 字段 | 类型 | 含义 |
 |---|---|---|
-| `name` | string (required) | short identifier shown in progress UIs |
-| `description` | string (required) | one-line summary |
-| `phases` | `{ title: string, detail?: string, model?: string }[]` | declared phases for the progress display |
-| `whenToUse` | string | optional usage hint |
-| `model` | string | default logical model for the run |
+| `name` | string(必填) | 在进度 UI 中显示的简短标识符 |
+| `description` | string(必填) | 一行摘要 |
+| `phases` | `{ title: string, detail?: string, model?: string }[]` | 为进度显示声明的各阶段 |
+| `whenToUse` | string | 可选的使用提示 |
+| `model` | string | 本次运行的默认逻辑模型 |
 
-Any other field, or any non-literal value, is a **validation error**.
+任何其他字段,或任何非字面量的值,都属于**校验错误**。
 
 ---
 
-## 3. Ambient globals
+## 3. 环境全局变量
 
-These are injected into the body. They are the entire portable surface.
+它们被注入到函数体中,构成全部可移植表面。
 
 ### `agent(prompt, opts?) => Promise<string | object | null>`
-Runs one sub-agent to completion.
-- Without `opts.schema`: resolves to the sub-agent's **final text** (string).
-- With `opts.schema` (a JSON Schema object): resolves to a **validated object**.
-- Resolves to **`null`** when the sub-agent is skipped (budget exhausted),
-  aborted, errors out, or fails schema validation after retries.
+将单个子代理运行至完成。
+- 不带 `opts.schema`:解析为子代理的**最终文本**(string)。
+- 带 `opts.schema`(一个 JSON Schema 对象):解析为一个**经过校验的对象**。
+- 当子代理被跳过(预算耗尽)、被中止、出错,或在多次重试后仍未通过 schema 校验时,
+  解析为 **`null`**。
 
-`opts` fields:
+`opts` 字段:
 
-| field | type | meaning |
+| 字段 | 类型 | 含义 |
 |---|---|---|
-| `label` | string | display label (does **not** affect caching) |
-| `phase` | string | phase to group this call under |
-| `schema` | JSON Schema | constrain & validate the output |
-| `model` | string | logical model (`"opus"`) or `"provider/model-id"` |
-| `effort` | `"low"\|"medium"\|"high"\|"xhigh"\|"max"` | reasoning-effort tier |
-| `agentType` | string | named host subagent to use |
-| `isolation` | `"worktree"` | run in an isolated git worktree |
+| `label` | string | 显示标签(**不**影响缓存) |
+| `phase` | string | 把本次调用归入的阶段 |
+| `schema` | JSON Schema | 约束并校验输出 |
+| `model` | string | 逻辑模型(`"opus"`)或 `"provider/model-id"` |
+| `effort` | `"low"\|"medium"\|"high"\|"xhigh"\|"max"` | 推理强度档位 |
+| `agentType` | string | 要使用的具名宿主子代理 |
+| `isolation` | `"worktree"` | 在隔离的 git worktree 中运行 |
 
 ### `parallel(thunks) => Promise<any[]>`
-Runs `() => Promise` thunks concurrently and awaits them all (a **barrier**). A
-thunk that throws (or whose `agent()` dies) resolves to `null` in the result
-array — `parallel` itself never rejects. Filter with `.filter(Boolean)`.
+并发运行 `() => Promise` 形式的 thunk 并等待它们全部完成(一道**屏障**)。
+抛出异常的 thunk(或其 `agent()` 失败的 thunk)在结果数组中解析为 `null`——
+`parallel` 本身绝不 reject。用 `.filter(Boolean)` 过滤。
 
 ### `pipeline(items, stage1, stage2, …) => Promise<any[]>`
-Runs each item through all stages independently with **no barrier between
-stages** — item A may be in stage 3 while item B is still in stage 1. Each stage
-callback receives `(prevResult, originalItem, index)`. A stage that throws drops
-that item to `null` and skips its remaining stages.
+让每个条目独立地流经所有阶段,**阶段之间没有屏障**——条目 A 可能正处于阶段 3,
+而条目 B 仍在阶段 1。每个阶段回调接收 `(prevResult, originalItem, index)`。
+抛出异常的阶段会把该条目降级为 `null` 并跳过其余阶段。
 
 ### `phase(title)` / `log(message)`
-Progress reporting. No return value.
+进度上报。无返回值。
 
 ### `workflow(nameOrRef, args?) => Promise<any>`
-Runs another workflow inline as a sub-step (one level of nesting only). `nameOrRef`
-is a registered name (string) or `{ scriptPath }`. The child shares the run's
-concurrency cap, agent counter, and budget.
+将另一个工作流作为子步骤内联运行(仅允许一层嵌套)。`nameOrRef` 是一个已注册的
+名称(string)或 `{ scriptPath }`。子工作流共享本次运行的并发上限、代理计数器与预算。
+
+### `question(prompt, opts?)` —— 可选的宿主扩展(不可移植)
+暂停以等待人类回答;解析为答案字符串,或在宿主无法发问或等待超时时解析为
+`opts.default ?? null`。`opts`:`{ options?, default?, timeoutMs? }`。这**不属于**
+可移植核心——Claude Code 不会注入它。可移植脚本在使用前**必须**进行特性检测:
+
+```js
+if (typeof question === "function") {
+  const go = await question("Proceed with deploy?", { options: ["yes", "no"], default: "no" });
+}
+```
 
 ### `args`
-The input value passed to this run, verbatim.
+传给本次运行的输入值,原样保留。
 
 ### `budget`
-`{ total: number | null, spent(): number, remaining(): number }` — an
-output-token budget. `total` is `null` when unbounded. Once exhausted, further
-`agent()` calls degrade to `null`.
+`{ total: number | null, spent(): number, remaining(): number }` —— 一个输出
+token 预算。`total` 为 `null` 表示无上限。一旦耗尽,后续 `agent()` 调用会降级为 `null`。
 
 ---
 
-## 4. Sandbox rules (enforced before the script runs)
+## 4. 沙箱规则(在脚本运行前强制执行)
 
-A host **must reject** a script that violates any of these:
+宿主**必须拒绝**违反以下任一规则的脚本:
 
-1. `meta` is not a pure literal (see §2).
-2. The body contains **TypeScript syntax** (type annotations, `interface`, `as`,
-   generics, …). Scripts are plain JS.
-3. The body uses **`Date.now()`**, **`Math.random()`**, or **argument-less
-   `new Date()`**. Workflows must be deterministic so resume/caching is sound;
-   derive any time/randomness from `args`.
-4. The body references escape identifiers: `globalThis`, `process`, `require`,
-   `eval`, `Function`, `import()` (dynamic), `module`, `exports`, …
-5. A single `parallel()` / `pipeline()` call exceeds **4096** items.
-6. A whole run exceeds **1000** `agent()` calls.
+1. `meta` 不是纯字面量(见 §2)。
+2. 函数体包含 **TypeScript 语法**(类型注解、`interface`、`as`、泛型……)。
+   脚本是普通 JS。
+3. 函数体使用了 **`Date.now()`**、**`Math.random()`**,或**不带参数的
+   `new Date()`**。工作流必须确定性,以保证恢复/缓存的可靠性;任何时间/随机性都应
+   从 `args` 派生。
+4. 函数体引用了逃逸标识符:`globalThis`、`process`、`require`、`eval`、`Function`、
+   `import()`(动态)、`module`、`exports`……
+5. 单次 `parallel()` / `pipeline()` 调用超过 **4096** 个条目。
+6. 整次运行超过 **1000** 次 `agent()` 调用。
 
-Free identifiers outside the ambient globals + standard safe builtins produce a
-**warning** (they may not exist on every host).
-
----
-
-## 5. Determinism & caching
-
-- A run is identified by a `runId`. Within a run, two `agent()` calls with an
-  identical `(prompt, opts)` (ignoring `label`/`phase`) return the **same cached
-  result** — the sub-agent runs once.
-- Because scripts are deterministic (rule §4.3), replaying a run reproduces the
-  same `(prompt, opts)` sequence, which is what makes cross-run resume possible.
+环境全局变量 + 标准安全内置之外的自由标识符会产生**警告**(它们未必存在于
+每个宿主上)。
 
 ---
 
-## 6. Concurrency
+## 5. 确定性与缓存
 
-In-flight sub-agents are capped (Claude Code: `min(16, cores−2)`; opencode:
-configurable, default 3). Excess calls queue. `parallel`/`pipeline` may be handed
-thousands of items; only the cap runs at once.
+- 一次运行由 `runId` 标识。在同一次运行内,两个具有相同 `(prompt, opts)`
+  (忽略 `label`/`phase`)的 `agent()` 调用返回**同一个缓存结果**——子代理只运行一次。
+- 由于脚本是确定性的(规则 §4.3),重放一次运行会重现同样的 `(prompt, opts)` 序列,
+  这正是跨运行恢复得以可能的原因。
 
 ---
 
-## 7. Minimal conforming example
+## 6. 并发
+
+在途子代理有上限(Claude Code:`min(16, cores−2)`;opencode:可配置,默认 3)。
+超出的调用排队。`parallel`/`pipeline` 可以被传入数千个条目;同一时刻只有上限内的
+数量在运行。
+
+---
+
+## 7. 最小合规示例
 
 ```js
 export const meta = {

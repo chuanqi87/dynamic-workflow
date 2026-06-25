@@ -19,15 +19,26 @@ interface SseClient {
  * opencode-only: lives entirely in the host package. Lazily started and shared
  * across runs in the plugin process.
  */
+export interface DashboardServerOptions {
+  /** Cancel a run by id (wired to the RunManager). Returns false if not active. */
+  cancel?: (runId: string) => boolean;
+  /** Answer a run's pending question(). Returns false if none is pending. */
+  answer?: (runId: string, value: string) => boolean;
+  /** Provide persisted history for the runs list (e.g. across restarts). */
+  history?: () => Promise<unknown[]>;
+}
+
 export class DashboardServer {
   readonly registry: RunRegistry;
   private server?: Server;
   private url?: string;
   private starting?: Promise<string>;
   private readonly clients = new Set<SseClient>();
+  private readonly opts: DashboardServerOptions;
 
-  constructor(registry?: RunRegistry) {
+  constructor(registry?: RunRegistry, opts: DashboardServerOptions = {}) {
     this.registry = registry ?? new RunRegistry();
+    this.opts = opts;
     this.registry.on((change) => this.broadcast(change));
   }
 
@@ -85,7 +96,20 @@ export class DashboardServer {
     if (path === "/api/runs") {
       return json(res, this.registry.list().map(runListItem));
     }
-    let m = /^\/api\/runs\/([^/]+)\/stream$/.exec(path);
+    let m = /^\/api\/runs\/([^/]+)\/cancel$/.exec(path);
+    if (m) {
+      const id = decodeURIComponent(m[1]!);
+      const ok = req.method === "POST" && this.opts.cancel ? this.opts.cancel(id) : false;
+      return json(res, { cancelled: ok });
+    }
+    m = /^\/api\/runs\/([^/]+)\/answer$/.exec(path);
+    if (m) {
+      const id = decodeURIComponent(m[1]!);
+      const value = url.searchParams.get("value") ?? "";
+      const ok = req.method === "POST" && this.opts.answer ? this.opts.answer(id, value) : false;
+      return json(res, { answered: ok });
+    }
+    m = /^\/api\/runs\/([^/]+)\/stream$/.exec(path);
     if (m) return this.openSse(res, "run", decodeURIComponent(m[1]!));
     m = /^\/api\/runs\/([^/]+)$/.exec(path);
     if (m) {

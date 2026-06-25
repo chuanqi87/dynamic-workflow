@@ -68,8 +68,14 @@ function renderTree(run) {
   for (const a of run.agents) (byPhase[a.phase||'—'] ||= []).push(a);
   const s = run.summary;
   let html = \`<h2>\${esc(run.name)} <span class="badge \${run.status}">\${run.status}</span></h2>\`;
-  html += \`<div class="tabs"><div class="tab" data-main="1">main agent</div></div>\`;
+  html += \`<div class="tabs"><div class="tab" data-main="1">main agent</div>\`;
+  if (run.status === 'running') html += \`<div class="tab" data-cancel="1">cancel</div>\`;
+  html += \`</div>\`;
   if (s) html += \`<div class="summary">agents \${s.agents} · ok \${s.succeeded} · null \${sumNull(s.nullsByReason)} · retries \${s.retries} · dropped \${s.dropped} · \${s.outputTokens} out-tok · \${s.durationMs}ms</div>\`;
+  if (run.pendingQuestion) {
+    const opts = (run.pendingQuestion.options || []).map(o => \`<button class="tab" data-ans="\${esc(o)}">\${esc(o)}</button>\`).join('');
+    html += \`<div class="summary" style="border:1px solid #d29922;border-radius:6px;padding:8px">❓ \${esc(run.pendingQuestion.question)}<div style="margin-top:6px">\${opts}<input id="ansInput" placeholder="type an answer…" style="background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:4px 8px"/><button class="tab" id="ansSend">send</button></div></div>\`;
+  }
   for (const [phase, agents] of Object.entries(byPhase)) {
     html += \`<div class="phase">\${esc(phase)}</div>\`;
     for (const a of agents) {
@@ -84,6 +90,12 @@ function renderTree(run) {
     if (el.dataset.sid) el.onclick = () => openSession(el.dataset.sid);
   const mt = document.querySelector('.tab[data-main]');
   if (mt) mt.onclick = () => run.mainSessionId && openSession(run.mainSessionId);
+  const ct = document.querySelector('.tab[data-cancel]');
+  if (ct) ct.onclick = () => fetch('/api/runs/'+encodeURIComponent(run.runId)+'/cancel', { method: 'POST' }).catch(()=>{});
+  const answer = (v) => fetch('/api/runs/'+encodeURIComponent(run.runId)+'/answer?value='+encodeURIComponent(v), { method: 'POST' }).catch(()=>{});
+  for (const b of document.querySelectorAll('.tab[data-ans]')) b.onclick = () => answer(b.dataset.ans);
+  const send = $('ansSend');
+  if (send) send.onclick = () => answer(($('ansInput')||{}).value || '');
 }
 
 function openSession(sid) {

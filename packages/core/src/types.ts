@@ -48,6 +48,16 @@ export interface Budget {
   remaining(): number;
 }
 
+/** Options for the ambient `question()` global (host-in-the-loop). */
+export interface QuestionOpts {
+  /** Suggested answers for the UI. */
+  options?: string[];
+  /** Returned if no answer arrives (timeout) or the host can't ask. */
+  default?: string;
+  /** Max wait before falling back to `default`. */
+  timeoutMs?: number;
+}
+
 /** The full set of ambient globals injected into a workflow script body. */
 export interface WorkflowGlobals {
   agent(prompt: string, opts?: AgentOpts): Promise<unknown>;
@@ -59,6 +69,13 @@ export interface WorkflowGlobals {
   phase(title: string): void;
   log(message: string): void;
   workflow(nameOrRef: string | { scriptPath: string }, args?: unknown): Promise<unknown>;
+  /**
+   * Pause for a human answer (OPTIONAL host extension — not part of the portable
+   * core contract). Resolves to the answer, or `opts.default ?? null` when the
+   * host cannot ask or the wait times out. Portable scripts must feature-detect:
+   * `typeof question === "function"`.
+   */
+  question(prompt: string, opts?: QuestionOpts): Promise<string | null>;
   args: unknown;
   budget: Budget;
 }
@@ -175,6 +192,12 @@ export interface HostAdapter {
   ): Promise<{ dir: string; cleanup(): Promise<void> }>;
   /** Close/abort a sub-session created via {@link createSubSession}; optional. */
   closeSession?(sessionId: string): Promise<void> | void;
+  /** Ask a human and await the answer; optional host-in-the-loop capability. */
+  askQuestion?(input: {
+    question: string;
+    options?: string[];
+    timeoutMs?: number;
+  }): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +252,13 @@ export interface RuntimeConfig {
   resumeFromRunId?: string;
   /** Resume: returns the raw jsonl text of a prior run's journal. */
   journalSource?: (runId: string) => Promise<string> | string;
+  /**
+   * Resume strategy. "keyed" (default) reuses any unchanged (prompt,opts) and is
+   * concurrency-safe. "prefix" replays in order and runs everything live after
+   * the first changed call (stricter drift detection; best-effort under
+   * concurrency).
+   */
+  replay?: "keyed" | "prefix";
   /** Injectable clock for summary duration (default Date.now). */
   now?: () => number;
   /** Injectable delay for retry backoff (default setTimeout). */

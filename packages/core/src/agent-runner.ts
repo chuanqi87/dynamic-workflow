@@ -1,5 +1,5 @@
 import type { BudgetTracker } from "./budget-tracker.js";
-import { cacheKey, type Journal } from "./journal.js";
+import { cacheKey, type Journal, type PrefixReplay } from "./journal.js";
 import type { ModelAgentMapper } from "./model-agent-mapper.js";
 import type { ProgressReporter } from "./progress-reporter.js";
 import { runStructured } from "./structured-output.js";
@@ -68,6 +68,8 @@ export interface AgentRunnerDeps {
   rng: () => number;
   /** Notified of every created sub-session id (for cleanup). */
   onSession: (sessionId: string) => void;
+  /** Prefix-mode cross-run resume; absent for keyed/no resume. */
+  prefixReplay?: PrefixReplay;
 }
 
 /** Per-call token/cost accumulator (covers retries + schema turns). */
@@ -111,6 +113,17 @@ export class AgentRunner {
       const cached = journal.get(key);
       if (!(opts?.schema && (cached === null || typeof cached !== "object"))) {
         return cached;
+      }
+    }
+
+    // Prefix-mode cross-run resume: consult the ordered replay (in-run dedup
+    // above already handled repeats). On a hit, record it so later identical
+    // calls dedup without advancing the prefix cursor.
+    if (this.deps.prefixReplay) {
+      const r = this.deps.prefixReplay.lookup(key);
+      if (r.hit && !(opts?.schema && (r.value === null || typeof r.value !== "object"))) {
+        journal.record("agent", key, r.value);
+        return r.value;
       }
     }
 

@@ -1,6 +1,6 @@
 import { AgentRunner, type AgentCounter, type ResolvedRetryConfig } from "./agent-runner.js";
 import { BudgetTracker } from "./budget-tracker.js";
-import { Journal, parseJournal, type JournalSink } from "./journal.js";
+import { Journal, parseJournal, parseJournalOrdered, PrefixReplay, type JournalSink } from "./journal.js";
 import { ModelAgentMapper } from "./model-agent-mapper.js";
 import { ProgressReporter } from "./progress-reporter.js";
 import { buildGlobals } from "./runtime-context.js";
@@ -65,6 +65,7 @@ interface SharedState {
   rng: () => number;
   sessions: Set<string>;
   journalSink?: JournalSink;
+  prefixReplay?: PrefixReplay;
 }
 
 /**
@@ -104,11 +105,16 @@ export async function runWorkflow(
       ),
   });
 
-  // Resume: seed cached results from a prior run's journal.
+  // Resume: replay cached results from a prior run's journal.
+  let prefixReplay: PrefixReplay | undefined;
   if (config.resumeFromRunId && config.journalSource) {
     try {
       const text = await config.journalSource(config.resumeFromRunId);
-      journal.seed(parseJournal(text));
+      if (config.replay === "prefix") {
+        prefixReplay = new PrefixReplay(parseJournalOrdered(text));
+      } else {
+        journal.seed(parseJournal(text));
+      }
     } catch (err) {
       reporter.warning(`resume failed to load journal ${config.resumeFromRunId}: ${(err as Error).message}; running fresh`);
     }
@@ -131,6 +137,7 @@ export async function runWorkflow(
     rng,
     sessions: new Set<string>(),
     journalSink: options.journalSink,
+    prefixReplay,
   };
 
   // Global wall-clock timeout aborts the whole run.
@@ -228,6 +235,7 @@ async function runOne(
     sleep: shared.sleep,
     rng: shared.rng,
     onSession: (id) => shared.sessions.add(id),
+    prefixReplay: shared.prefixReplay,
   });
 
   const workflowFn = async (
@@ -246,6 +254,27 @@ async function runOne(
     return runOne(shared, childSource, nestedArgs, depth + 1);
   };
 
+  const question = async (
+    prompt: string,
+    opts?: { options?: string[]; default?: string; timeoutMs?: number },
+  ): Promise<string | null> => {
+    if (!shared.adapter.askQuestion) {
+      shared.reporter.warning("question() is not supported by this host; using default");
+      return opts?.default ?? null;
+    }
+    shared.reporter.log(`question: ${prompt}`);
+    try {
+      const answer = await shared.adapter.askQuestion({
+        question: prompt,
+        options: opts?.options,
+        timeoutMs: opts?.timeoutMs,
+      });
+      return answer ?? opts?.default ?? null;
+    } catch {
+      return opts?.default ?? null;
+    }
+  };
+
   const globals = buildGlobals({
     runner,
     reporter: shared.reporter,
@@ -254,6 +283,7 @@ async function runOne(
     meta,
     phaseRef,
     workflow: workflowFn,
+    question,
   });
 
   return executeBody(body, globals);
