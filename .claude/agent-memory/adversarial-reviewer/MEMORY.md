@@ -1,0 +1,1 @@
+- [Recurring failure modes](recurring-failure-modes.md) — patterns that keep recurring in this repo's reviews: fire-and-forget persistence races, side-effecting usage accounting, over-broad error classification
