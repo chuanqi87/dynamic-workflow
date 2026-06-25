@@ -15,6 +15,27 @@ function compile(schema: JsonSchema): ValidateFunction {
   return v;
 }
 
+/** Format ajv errors into a compact, human/LLM-readable list. */
+function formatErrors(validate: ValidateFunction): string {
+  return (validate.errors ?? [])
+    .map((e) => `- ${e.instancePath || "(root)"} ${e.message ?? "invalid"}`)
+    .join("\n");
+}
+
+/**
+ * Validate an already-parsed candidate against a schema. The single ajv entry
+ * point reused by both the prompt-parse path and the host-native path, so a
+ * native host's output is never trusted blindly — it is always re-validated.
+ */
+export function validateAgainst(
+  schema: JsonSchema,
+  candidate: unknown,
+): { ok: true; value: unknown } | { ok: false; errors: string } {
+  const validate = compile(schema);
+  if (validate(candidate)) return { ok: true, value: candidate };
+  return { ok: false, errors: formatErrors(validate) };
+}
+
 /** Build the instruction appended to a prompt when a JSON schema is requested. */
 export function buildSchemaEnvelope(basePrompt: string, schema: JsonSchema): string {
   return `${basePrompt}
@@ -135,7 +156,6 @@ export async function runStructured(params: {
   onRetry?: (attempt: number, reason: string) => void;
 }): Promise<StructuredResult> {
   const { basePrompt, schema, retries, run, onRetry } = params;
-  const validate = compile(schema);
 
   let prompt = buildSchemaEnvelope(basePrompt, schema);
   const maxAttempts = retries + 1;
@@ -155,16 +175,12 @@ export async function runStructured(params: {
       return { value: null, attempts: attempt };
     }
 
-    if (validate(parsed)) {
-      return { value: parsed, attempts: attempt };
-    }
+    const result = validateAgainst(schema, parsed);
+    if (result.ok) return { value: result.value, attempts: attempt };
 
-    const errors = (validate.errors ?? [])
-      .map((e) => `- ${e.instancePath || "(root)"} ${e.message ?? "invalid"}`)
-      .join("\n");
     if (attempt < maxAttempts) {
-      onRetry?.(attempt, errors);
-      prompt = buildRetryPrompt(errors, text);
+      onRetry?.(attempt, result.errors);
+      prompt = buildRetryPrompt(result.errors, text);
       continue;
     }
     return { value: null, attempts: attempt };

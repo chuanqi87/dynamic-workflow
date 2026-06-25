@@ -59,8 +59,8 @@ return { x };          // 顶层 return 产出工作流的结果
 将单个子代理运行至完成。
 - 不带 `opts.schema`:解析为子代理的**最终文本**(string)。
 - 带 `opts.schema`(一个 JSON Schema 对象):解析为一个**经过校验的对象**。
-- 当子代理被跳过(预算耗尽)、被中止、出错,或在多次重试后仍未通过 schema 校验时,
-  解析为 **`null`**。
+- 当子代理被中止、出错,或在多次重试后仍未通过 schema 校验时,解析为 **`null`**。
+  (预算耗尽默认会**抛出**;仅在宿主配置 `budgetMode: "degrade"` 时才降级为 `null`——见下文 `budget`。)
 
 `opts` 字段:
 
@@ -107,7 +107,9 @@ if (typeof question === "function") {
 
 ### `budget`
 `{ total: number | null, spent(): number, remaining(): number }` —— 一个输出
-token 预算。`total` 为 `null` 表示无上限。一旦耗尽,后续 `agent()` 调用会降级为 `null`。
+token 预算。`total` 为 `null` 表示无上限。一旦预算耗尽,后续的 `agent()` 调用**默认会抛出**
+`BudgetExceededError`(硬上限,与 Claude Code 一致);仅当宿主配置 `budgetMode: "degrade"` 时,
+才会改为降级为 `null`。
 
 ---
 

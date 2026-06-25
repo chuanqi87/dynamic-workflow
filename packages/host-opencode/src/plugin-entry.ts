@@ -7,7 +7,7 @@ import { indexPath } from "./dashboard/run-index.js";
 import type { OpencodeEventLike } from "./dashboard/transcript.js";
 import { FileJournalSink, fileJournalSource, journalPath } from "./file-journal.js";
 import { OpencodeAdapter } from "./opencode-adapter.js";
-import { readConfig } from "./read-config.js";
+import { readConfig, readToolConfig } from "./read-config.js";
 import { resolveSource } from "./resolve-source.js";
 import { RunManager } from "./run-manager.js";
 import { persistScript } from "./script-store.js";
@@ -28,6 +28,7 @@ export function autoConcurrency(): number {
  */
 export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, options) => {
   const cfg = readConfig(options ?? {});
+  const toolCfg = readToolConfig(options ?? {});
   const dashboardEnabled = (options as { dashboard?: boolean } | undefined)?.dashboard !== false;
   const dashboardPort = (options as { dashboardPort?: number } | undefined)?.dashboardPort;
 
@@ -72,6 +73,21 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             .string()
             .optional()
             .describe("Resume from a prior run id: cached unchanged agent() results are reused"),
+          replay: tool.schema
+            .enum(["keyed", "prefix"])
+            .optional()
+            .describe(
+              "Resume strategy: 'keyed' (default, position-independent, concurrency-safe) or " +
+                "'prefix' (Claude-Code-style: reuse the longest unchanged prefix, rerun the first " +
+                "changed call and everything after; best-effort under concurrency)",
+            ),
+          background: tool.schema
+            .boolean()
+            .optional()
+            .describe(
+              "Run detached: return a run id immediately and notify on completion (toast). " +
+                "Fetch the result later with workflow_status. Default false (blocking).",
+            ),
         },
         async execute(args, ctx) {
           const dir = ctx.directory ?? directory;
@@ -103,53 +119,101 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             toast: true,
             onEvent: (ev) => manager.registry.applyProgress(runId, ev),
             onQuestion: (q) => manager.ask(runId, q.question, q.options, q.timeoutMs),
+            defaultTools: toolCfg.defaultTools,
+            agentTools: toolCfg.agentTools,
           });
           const sink = new FileJournalSink(journalPath(dir, runId));
 
-          let res: Awaited<ReturnType<typeof runWorkflow>>;
-          try {
-            res = await runWorkflow(source, {
-              adapter,
-              runId,
-              journalSink: sink,
-              config: {
-                ...cfg,
-                concurrency: cfg.concurrency ?? autoConcurrency(),
-                args: args.input,
-                parentSessionId: ctx.sessionID,
-                signal,
-                resumeFromRunId: args.resume,
-                journalSource: fileJournalSource(dir),
-                resolveWorkflowSource: (ref) =>
-                  resolveSource(
-                    typeof ref === "string" ? { name: ref } : { scriptPath: ref.scriptPath },
-                    dir,
-                  ),
-              },
-            });
-          } catch (err) {
-            manager.finish(runId, signal.aborted ? "cancelled" : "failed");
-            throw err;
-          }
-          manager.finish(runId, "completed", res.summary);
+          // One run, finalized identically whether awaited (foreground) or
+          // detached (background): persist result + status, then return the
+          // tool result. Failures finish the run (cancelled/failed) and rethrow.
+          const executeRun = async () => {
+            let res: Awaited<ReturnType<typeof runWorkflow>>;
+            try {
+              res = await runWorkflow(source, {
+                adapter,
+                runId,
+                journalSink: sink,
+                config: {
+                  ...cfg,
+                  concurrency: cfg.concurrency ?? autoConcurrency(),
+                  args: args.input,
+                  parentSessionId: ctx.sessionID,
+                  signal,
+                  resumeFromRunId: args.resume,
+                  // Per-call replay overrides any configured default; absent → engine default (keyed).
+                  replay:
+                    args.replay === "prefix" || args.replay === "keyed" ? args.replay : cfg.replay,
+                  journalSource: fileJournalSource(dir),
+                  resolveWorkflowSource: (ref) =>
+                    resolveSource(
+                      typeof ref === "string" ? { name: ref } : { scriptPath: ref.scriptPath },
+                      dir,
+                    ),
+                },
+              });
+            } catch (err) {
+              manager.finish(runId, signal.aborted ? "cancelled" : "failed");
+              throw err;
+            }
+            const base =
+              typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2);
+            // Persist a bounded copy so workflow_status can return it later.
+            const persisted = base.length > 8192 ? `${base.slice(0, 8192)}…(truncated)` : base;
+            manager.finish(runId, "completed", res.summary, persisted);
 
-          const base =
-            typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2);
-          const output = savedScriptPath
-            ? `${base}\n\nScript saved to ${savedScriptPath}. To iterate, edit it and re-run with scriptPath + resume (run id ${runId}).`
-            : base;
-          return {
-            output,
-            metadata: {
-              workflow: res.meta.name,
-              runId,
-              agents: res.agents,
-              spentOutputTokens: res.spent,
-              summary: res.summary,
-              ...(savedScriptPath ? { scriptPath: savedScriptPath } : {}),
-              ...(dashboardUrl ? { dashboard: dashboardUrl } : {}),
-            },
+            const output = savedScriptPath
+              ? `${base}\n\nScript saved to ${savedScriptPath}. To iterate, edit it and re-run with scriptPath + resume (run id ${runId}).`
+              : base;
+            return {
+              output,
+              metadata: {
+                workflow: res.meta.name,
+                runId,
+                agents: res.agents,
+                spentOutputTokens: res.spent,
+                summary: res.summary,
+                ...(savedScriptPath ? { scriptPath: savedScriptPath } : {}),
+                ...(dashboardUrl ? { dashboard: dashboardUrl } : {}),
+              },
+            };
           };
+
+          if (args.background === true) {
+            // Detached: never await, never let a rejection escape the host. The
+            // adapter already toasts run start/end; finalize state on completion
+            // and flush the index so workflow_status can read the result.
+            void executeRun()
+              .catch((err) => {
+                void client.tui
+                  .showToast({
+                    body: {
+                      message: `workflow "${args.name ?? runId}" failed: ${(err as Error).message}`,
+                      variant: "error",
+                    },
+                  })
+                  .catch(() => undefined);
+              })
+              .finally(() => {
+                void manager.flush();
+              });
+            const lines = [
+              `Workflow started in background. Run id: ${runId}`,
+              `Fetch progress/result with workflow_status (runId: ${runId}).`,
+              ...(dashboardUrl ? [`Dashboard: ${dashboardUrl}`] : []),
+            ];
+            return {
+              output: lines.join("\n"),
+              metadata: {
+                runId,
+                background: true,
+                ...(savedScriptPath ? { scriptPath: savedScriptPath } : {}),
+                ...(dashboardUrl ? { dashboard: dashboardUrl } : {}),
+              },
+            };
+          }
+
+          return await executeRun();
         },
       }),
 
@@ -184,9 +248,24 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
         description: "List workflow runs (live in this process + persisted history) with status.",
         args: { runId: tool.schema.string().optional().describe("Optional: report only this run") },
         async execute(args) {
+          // Flush pending index writes first so a just-finished (e.g. background)
+          // run's status/result is readable, not racing the fire-and-forget queue.
+          await manager.flush();
           if (args.runId) {
-            const run = manager.registry.get(args.runId);
-            return { output: JSON.stringify(run ?? { error: "not found" }, null, 2), metadata: {} };
+            // Merge the live view (in-flight progress) with the persisted entry
+            // (final status, summary, and result for completed/background runs).
+            const live = manager.registry.get(args.runId);
+            const persisted = (await manager.history()).find((h) => h.runId === args.runId);
+            if (!live && !persisted) {
+              return { output: JSON.stringify({ error: "not found" }, null, 2), metadata: {} };
+            }
+            return {
+              output: JSON.stringify({ live, persisted }, null, 2),
+              metadata: {
+                status: persisted?.status ?? live?.status ?? "running",
+                hasResult: persisted?.result != null,
+              },
+            };
           }
           const live = manager.list().map((r) => ({
             runId: r.runId,

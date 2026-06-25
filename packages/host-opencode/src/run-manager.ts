@@ -47,8 +47,8 @@ export class RunManager {
     return ac.signal;
   }
 
-  /** Mark a run terminal and persist it. */
-  finish(runId: string, status: IndexStatus, summary?: RunSummary): void {
+  /** Mark a run terminal and persist it (optionally with its final result). */
+  finish(runId: string, status: IndexStatus, summary?: RunSummary, result?: string): void {
     this.resolvePending(runId, null);
     this.controllers.delete(runId);
     const run = this.registry.get(runId);
@@ -60,6 +60,7 @@ export class RunManager {
       endedAt: this.now(),
       agents: run?.agents.length,
       summary,
+      ...(result !== undefined ? { result } : {}),
     });
   }
 

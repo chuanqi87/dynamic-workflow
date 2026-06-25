@@ -12,6 +12,8 @@ export interface RunIndexEntry {
   endedAt?: number;
   agents?: number;
   summary?: RunSummary;
+  /** Final workflow output (truncated), so background runs are retrievable. */
+  result?: string;
 }
 
 /** Path to the cross-run index under `<directory>/.workflow/`. */

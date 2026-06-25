@@ -7,14 +7,24 @@ interface MockReply {
   outputTokens?: number;
   errored?: boolean;
   aborted?: boolean;
+  /** Host-native structured output payload. */
+  structured?: unknown;
+  /** Simulate a host that rejects the native `format` field. */
+  formatUnsupported?: boolean;
 }
 
 class MockAdapter implements HostAdapter {
   readonly rootDirectory = "/tmp/wf-test";
   readonly calls: AgentRequest[] = [];
+  readonly capabilities?: { structuredOutput?: boolean };
   private sessionSeq = 0;
 
-  constructor(private readonly responder: (req: AgentRequest) => MockReply) {}
+  constructor(
+    private readonly responder: (req: AgentRequest) => MockReply,
+    capabilities?: { structuredOutput?: boolean },
+  ) {
+    this.capabilities = capabilities;
+  }
 
   async runAgent(req: AgentRequest): Promise<AgentResult> {
     this.calls.push(req);
@@ -25,6 +35,8 @@ class MockAdapter implements HostAdapter {
       cost: 0,
       aborted: r.aborted ?? false,
       errored: r.errored ?? false,
+      ...(r.structured !== undefined ? { structured: r.structured } : {}),
+      ...(r.formatUnsupported ? { formatUnsupported: true } : {}),
     };
   }
   async createSubSession(): Promise<string> {
@@ -87,6 +99,67 @@ return await agent("judge", { schema: {
 } });`;
     const { result } = await run(src, adapter);
     expect(result).toEqual({ verdict: "real", score: 8 });
+  });
+
+  const schemaSrc = `export const meta = { name: "schema", description: "d" };
+return await agent("judge", { schema: {
+  type: "object",
+  properties: { verdict: { type: "string" }, score: { type: "number" } },
+  required: ["verdict", "score"],
+} });`;
+
+  test("native structured output: returns the host's structured object (no JSON in text)", async () => {
+    const adapter = new MockAdapter(
+      () => ({ text: "", structured: { verdict: "real", score: 9 } }),
+      { structuredOutput: true },
+    );
+    const { result } = await run(schemaSrc, adapter);
+    expect(result).toEqual({ verdict: "real", score: 9 });
+    // The schema must have been forwarded to the host for native enforcement.
+    expect(adapter.calls[0]!.schema).toBeDefined();
+  });
+
+  test("native structured output: ajv safety net rejects an invalid structured payload", async () => {
+    // Host claims native support but returns an object missing `score`.
+    const adapter = new MockAdapter(
+      () => ({ text: "", structured: { verdict: "real" } }),
+      { structuredOutput: true },
+    );
+    const { result } = await run(schemaSrc, adapter);
+    expect(result).toBeNull();
+  });
+
+  test("native structured output: an invalid native payload falls through to envelope retries", async () => {
+    let calls = 0;
+    const adapter = new MockAdapter(
+      (req) => {
+        calls++;
+        // Native attempt (carries schema) returns an object that fails ajv;
+        // the envelope retry (no schema) returns valid JSON text.
+        if (req.schema) return { text: "", structured: { verdict: "real" } };
+        return { text: '```json\n{"verdict": "real", "score": 6}\n```' };
+      },
+      { structuredOutput: true },
+    );
+    const { result } = await run(schemaSrc, adapter);
+    expect(result).toEqual({ verdict: "real", score: 6 });
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  test("native structured output: formatUnsupported falls back to the prompt-envelope path", async () => {
+    let calls = 0;
+    const adapter = new MockAdapter(
+      () => {
+        calls++;
+        // First (native) attempt is rejected; the envelope retry returns JSON text.
+        if (calls === 1) return { formatUnsupported: true };
+        return { text: '```json\n{"verdict": "real", "score": 7}\n```' };
+      },
+      { structuredOutput: true },
+    );
+    const { result } = await run(schemaSrc, adapter);
+    expect(result).toEqual({ verdict: "real", score: 7 });
+    expect(calls).toBeGreaterThanOrEqual(2);
   });
 
   test("budget exhaustion throws by default (hard ceiling)", async () => {

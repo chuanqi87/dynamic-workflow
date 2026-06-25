@@ -2,7 +2,7 @@ import type { BudgetTracker } from "./budget-tracker.js";
 import { cacheKey, type Journal, type PrefixReplay } from "./journal.js";
 import type { ModelAgentMapper } from "./model-agent-mapper.js";
 import type { ProgressReporter } from "./progress-reporter.js";
-import { runStructured } from "./structured-output.js";
+import { extractJson, runStructured, validateAgainst } from "./structured-output.js";
 import type { Semaphore } from "./semaphore.js";
 import { currentFrames } from "./orchestration-context.js";
 import {
@@ -84,6 +84,10 @@ interface Spend {
 interface TurnOutcome {
   text: string | null;
   category: NullReason;
+  /** Host-native structured payload, when the host produced one. */
+  structured?: unknown;
+  /** Host advertised native structured output but rejected the schema/format. */
+  formatUnsupported?: boolean;
 }
 
 /**
@@ -179,6 +183,44 @@ export class AgentRunner {
     const spend: Spend = { tokens: 0, cost: 0 };
     try {
       if (opts?.schema) {
+        // Native path: ask the host to enforce the schema server-side, then
+        // re-validate with ajv (never trust the host blindly). Falls back to the
+        // portable prompt-envelope path if the host can't do native structured
+        // output for this call.
+        if (adapter.capabilities?.structuredOutput === true) {
+          const native = await this.invokeWithRetry(
+            sessionId,
+            prompt,
+            resolved,
+            directory,
+            label,
+            spend,
+            { schema: opts.schema, retries: this.deps.schemaRetries },
+          );
+          if (!native.formatUnsupported) {
+            // A genuine terminal/abort failure (no response at all): degrade now
+            // rather than waste an envelope retry that would hit the same wall.
+            if (native.text === null && native.structured === undefined) {
+              reporter.agentNull(label, native.category, native.category, sessionId);
+              journal.record("agent", key, null);
+              return null;
+            }
+            const candidate =
+              native.structured !== undefined ? native.structured : extractJson(native.text ?? "");
+            const checked =
+              candidate === undefined ? null : validateAgainst(opts.schema, candidate);
+            if (checked && checked.ok) {
+              reporter.agentDone(label, spend.tokens, spend.cost, sessionId);
+              journal.record("agent", key, checked.value);
+              return checked.value;
+            }
+            // Got a response that didn't satisfy the schema → fall through to the
+            // portable envelope path for feedback-driven retries (symmetry with
+            // the non-native path; native is then never strictly less robust).
+          }
+          // formatUnsupported also falls through to the envelope path below.
+        }
+
         const { value } = await runStructured({
           basePrompt: prompt,
           schema: opts.schema,
@@ -225,6 +267,7 @@ export class AgentRunner {
     directory: string | undefined,
     label: string,
     spend: Spend,
+    structured?: { schema: AgentOpts["schema"]; retries: number },
   ): Promise<TurnOutcome> {
     const req: AgentRequest = {
       sessionId,
@@ -235,6 +278,7 @@ export class AgentRunner {
       timeoutMs: this.deps.agentTimeoutMs || undefined,
       directory,
       label,
+      ...(structured ? { schema: structured.schema, schemaRetries: structured.retries } : {}),
     };
 
     let attempt = 0;
@@ -259,6 +303,12 @@ export class AgentRunner {
       spend.tokens += result.tokens.output;
       spend.cost += result.cost;
 
+      // Host can't enforce the schema natively — surface so execute() falls back
+      // to the portable prompt-envelope path (don't retry the same way).
+      if (result.formatUnsupported) {
+        return { text: result.text || null, category: "apiError", formatUnsupported: true };
+      }
+
       if (result.aborted) {
         // Master-signal abort (user cancel / global timeout) is intentional —
         // never retry. A per-attempt timeout (signal not aborted) may retry.
@@ -272,7 +322,9 @@ export class AgentRunner {
         return { text: null, category: "timeout" };
       }
 
-      if (!result.errored) return { text: result.text, category: "apiError" };
+      if (!result.errored) {
+        return { text: result.text, category: "apiError", structured: result.structured };
+      }
 
       const transient = result.retriable === true;
       if (transient && attempt < this.deps.retry.retries && !this.deps.signal.aborted) {

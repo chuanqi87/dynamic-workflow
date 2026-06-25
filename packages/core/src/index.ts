@@ -6,7 +6,12 @@ export type { ValidationResult, ValidationIssue, Severity } from "./portability-
 export { loadScript, ScriptLoadError } from "./script-loader.js";
 export type { LoadedScript } from "./script-loader.js";
 export { parallel, pipeline } from "./runtime-context.js";
-export { extractJson, buildSchemaEnvelope, runStructured } from "./structured-output.js";
+export {
+  extractJson,
+  buildSchemaEnvelope,
+  runStructured,
+  validateAgainst,
+} from "./structured-output.js";
 export { Semaphore } from "./semaphore.js";
 export { BudgetTracker } from "./budget-tracker.js";
 export {

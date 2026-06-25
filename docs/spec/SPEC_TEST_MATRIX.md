@@ -53,6 +53,13 @@ DFX 加固行为,都至少映射到一个自动化测试。测试使用 `MockAda
 | 仪表盘取消路由 | M6 | server cancel route + RunManager.cancel |
 | worktree 隔离(创建/保留/降级) | M7 | `worktree.test.ts`(全部) |
 | 前缀恢复模式 | M7 | `resume.test.ts` → "prefix mode: changed early call invalidates" / "unchanged prefix reused" |
-| effort→reasoning_effort / 强制工具 schema | M7 | 未实现 —— 受限于 opencode SDK(无逐 prompt 的 reasoning_effort / 临时强制工具);已记录在案 |
+| 原生结构化输出(opencode `format: json_schema`)+ ajv 兜底 | §3 | `engine.test.ts` → "native structured output: returns the host's structured object" / "ajv safety net rejects an invalid structured payload" / "formatUnsupported falls back to the prompt-envelope path";`opencode-adapter.test.ts` → "OpencodeAdapter native structured output" 区块 |
+| 旧服务端拒绝 `format` → 一次性降级 + 回退 ajv | §3 (DFX) | `opencode-adapter.test.ts` → "downgrades only on a format-specific 400, then stops sending format" |
+| 仅 format 相关 400 才降级(通用 400 不误判) | §3 (DFX) | `opencode-adapter.test.ts` → "a generic 400 (not about format) does NOT downgrade native (B1)" |
+| native 校验失败 → 回退 envelope 反馈式重试 | §3 | `engine.test.ts` → "an invalid native payload falls through to envelope retries" |
+| effort→reasoning_effort | M7 | 未实现 —— opencode SDK 的 prompt body 无逐 prompt 的 `reasoning_effort` 字段;effort 仅用于本地模型选择,已记录在案 |
+| 工具层暴露 replay(keyed/prefix) | resume §5 | `read-config.test.ts` → "parses replay only for the two valid values"(引擎双模式见 `resume.test.ts`) |
+| 背景执行(background)+ 结果持久化 | host | `plugin-entry.test.ts` → "background mode returns immediately, then persists the result";`run-manager.test.ts` → "finish persists the final result for later retrieval" |
+| 逐代理工具控制(host 配置 `defaultTools`/`agentTools`) | host | `read-config.test.ts` → "readToolConfig" 区块;`opencode-adapter.test.ts` → "forwards a per-prompt tools map" |
 | question() 人在回路 | M8 | `dfx.test.ts` → "M8 question()";`run-manager.test.ts` → "ask()/answer()/cancel unblocks" |
 | `agent-start.group` 编排遥测 | §7 遥测 | `orchestration-metadata.test.ts` → "parallel children share a groupId" / "pipeline stages carry stageIndex" / "parallel nested in a pipeline stage links parentId" / "group ids are stable across a re-run" |

@@ -112,6 +112,47 @@ return { a, b };`;
     ).rejects.toThrow(/validation/i);
   });
 
+  test("background mode returns immediately, then persists the result", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const input = fakeInput(dir);
+    // Gate the prompt so the run is provably still in-flight when execute returns.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    (input.client as unknown as { session: { prompt: unknown } }).session.prompt = async (opts: {
+      body: { parts: Array<{ text: string }> };
+    }) => {
+      await gate;
+      return {
+        data: {
+          info: { tokens: { input: 1, output: 3, reasoning: 0 }, cost: 0, error: null },
+          parts: [{ type: "text", text: `echo:${opts.body.parts[0]!.text}` }],
+        },
+      };
+    };
+    const hooks = await WorkflowPlugin(input, { dashboard: false });
+    const script = `export const meta = { name: "bg", description: "d" };\nreturn await agent("hi");`;
+
+    const started = await hooks.tool!.workflow!.execute({ script, background: true }, fakeCtx(dir));
+    const meta = typeof started === "string" ? undefined : (started.metadata as { background?: boolean; runId?: string });
+    expect(meta?.background).toBe(true);
+    expect(meta?.runId).toBe("wf-m1");
+    const startedOut = typeof started === "string" ? started : started.output;
+    expect(startedOut).toContain("background");
+
+    // Let the detached run finish, then poll the persisted status/result.
+    release();
+    let persisted: { status?: string; result?: string } | undefined;
+    for (let i = 0; i < 200; i++) {
+      const s = await hooks.tool!.workflow_status!.execute({ runId: "wf-m1" }, fakeCtx(dir));
+      const out = typeof s === "string" ? s : s.output;
+      persisted = (JSON.parse(out) as { persisted?: typeof persisted }).persisted;
+      if (persisted?.status === "completed") break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(persisted?.status).toBe("completed");
+    expect(persisted?.result).toContain("echo:hi");
+  });
+
   test("registers an event hook only when the dashboard is enabled", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
     // Constructing the plugin does NOT start a server (that is lazy, on run).

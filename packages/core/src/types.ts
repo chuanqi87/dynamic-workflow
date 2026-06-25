@@ -99,6 +99,14 @@ export interface AgentRequest {
   directory?: string;
   /** Display label for progress UIs. */
   label?: string;
+  /**
+   * When set, request host-native schema-constrained output for this turn
+   * (only honoured by adapters that advertise {@link HostAdapter.capabilities}
+   * `.structuredOutput`). The core still validates the result with ajv.
+   */
+  schema?: JsonSchema;
+  /** Native server-side retry budget for schema-constrained output. */
+  schemaRetries?: number;
 }
 
 /** Token usage for one assistant turn. */
@@ -125,6 +133,17 @@ export interface AgentResult {
   retriable?: boolean;
   /** Optional human-readable error detail for logs. */
   errorDetail?: string;
+  /**
+   * Parsed object from host-native structured output, when produced. The core
+   * prefers this over parsing {@link AgentResult.text}, then re-validates it.
+   */
+  structured?: unknown;
+  /**
+   * Set by an adapter that advertised native structured output but found the
+   * host rejected the request's `schema`/`format` (e.g. an older server). Tells
+   * the core to fall back to the prompt-envelope + parse path for this call.
+   */
+  formatUnsupported?: boolean;
 }
 
 /**
@@ -190,6 +209,13 @@ export type ProgressEvent =
 export interface HostAdapter {
   /** Root working directory for the workflow run. */
   readonly rootDirectory: string;
+  /**
+   * Optional, possibly-dynamic capability flags. Absent ⇒ all false. When
+   * `structuredOutput` is true the core asks the host to enforce a schema
+   * natively (and still re-validates); otherwise it uses the portable
+   * prompt-envelope + ajv path. Claude Code's adapter leaves this unset.
+   */
+  readonly capabilities?: { structuredOutput?: boolean };
   /** Run one sub-agent to completion and return its normalized result. */
   runAgent(req: AgentRequest): Promise<AgentResult>;
   /** Create a sub-session under `parentId`; returns the new session id. */

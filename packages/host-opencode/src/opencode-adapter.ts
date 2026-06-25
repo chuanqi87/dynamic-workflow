@@ -12,6 +12,17 @@ import type {
 
 const ABORTED = Symbol("aborted");
 
+/**
+ * The v1 SDK prompt body, extended with `format` (native structured output).
+ * `format` exists on the opencode server and the v2 typings but not the v1
+ * client body type; this single localized cast lets the v1 client carry it.
+ */
+type PromptBody = NonNullable<
+  NonNullable<Parameters<OpencodeClient["session"]["prompt"]>[0]>["body"]
+> & {
+  format?: { type: "json_schema"; schema: unknown; retryCount?: number };
+};
+
 export interface OpencodeAdapterOptions {
   /** Root working directory (PluginInput.directory). */
   rootDirectory: string;
@@ -29,6 +40,10 @@ export interface OpencodeAdapterOptions {
     options?: string[];
     timeoutMs?: number;
   }) => Promise<string | null>;
+  /** Tool enable/disable applied to every sub-agent prompt (host config). */
+  defaultTools?: Record<string, boolean>;
+  /** Per-agent-name tool enable/disable, merged over {@link defaultTools}. */
+  agentTools?: Record<string, Record<string, boolean>>;
 }
 
 /**
@@ -44,8 +59,22 @@ export class OpencodeAdapter implements HostAdapter {
   private readonly logStream: { write(s: string): void };
   private readonly onEvent?: (ev: ProgressEvent) => void;
   private readonly onQuestion?: OpencodeAdapterOptions["onQuestion"];
+  private readonly defaultTools?: Record<string, boolean>;
+  private readonly agentTools?: Record<string, Record<string, boolean>>;
   /** Per-session count of assistant messages already accounted for. */
   private readonly counted = new Map<string, number>();
+  /**
+   * Whether native schema-constrained output (`format: json_schema`) works on
+   * this server. Optimistically true; flipped off for the rest of the run if the
+   * server rejects the `format` field, so later schema calls skip straight to the
+   * core's portable prompt-envelope path.
+   */
+  private structuredSupported = true;
+
+  /** Advertised to the core; dynamic so an older server downgrades cleanly. */
+  get capabilities(): { structuredOutput: boolean } {
+    return { structuredOutput: this.structuredSupported };
+  }
 
   constructor(
     private readonly client: OpencodeClient,
@@ -57,6 +86,19 @@ export class OpencodeAdapter implements HostAdapter {
     this.logStream = opts.logStream ?? process.stderr;
     this.onEvent = opts.onEvent;
     this.onQuestion = opts.onQuestion;
+    this.defaultTools = opts.defaultTools;
+    this.agentTools = opts.agentTools;
+  }
+
+  /**
+   * Effective per-prompt tool map: host `defaultTools`, overlaid by the
+   * resolved agent's `agentTools`. Returns undefined when nothing is configured
+   * (the host then uses the agent type's own tools).
+   */
+  private toolsFor(req: AgentRequest): Record<string, boolean> | undefined {
+    const perAgent = req.agent ? this.agentTools?.[req.agent] : undefined;
+    const merged = { ...this.defaultTools, ...perAgent };
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   /** Host-in-the-loop: delegate to the injected resolver (dashboard / tool). */
@@ -83,6 +125,11 @@ export class OpencodeAdapter implements HostAdapter {
   async runAgent(req: AgentRequest): Promise<AgentResult> {
     if (req.signal.aborted) return abortedResult();
 
+    // Send native schema-constrained output only while the server is known to
+    // accept it. The localized cast carries `format`/`tools`, which exist on the
+    // opencode server (and the v2 SDK typings) but not on the v1 client body type.
+    const sentFormat = req.schema != null && this.structuredSupported;
+    const tools = this.toolsFor(req);
     const promptCall = this.client.session.prompt({
       path: { id: req.sessionId },
       query: { directory: req.directory ?? this.directory },
@@ -90,8 +137,12 @@ export class OpencodeAdapter implements HostAdapter {
         ...(req.model ? { model: req.model } : {}),
         ...(req.agent ? { agent: req.agent } : {}),
         ...(req.system ? { system: req.system } : {}),
+        ...(tools ? { tools } : {}),
+        ...(sentFormat
+          ? { format: { type: "json_schema", schema: req.schema, retryCount: req.schemaRetries } }
+          : {}),
         parts: [{ type: "text", text: req.prompt }],
-      },
+      } as PromptBody,
     });
 
     const outcome = await this.race(promptCall, req);
@@ -102,7 +153,13 @@ export class OpencodeAdapter implements HostAdapter {
 
     const data = outcome.data;
     if (!data) {
-      // No 200 payload — a transport/HTTP/validation error.
+      // No 200 payload — a transport/HTTP/validation error. A rejected `format`
+      // field surfaces here (request-body validation happens before generation),
+      // and only when the error specifically names format/schema do we downgrade
+      // — a generic 400 (bad model, unknown agent) must stay a real error.
+      if (sentFormat && isFormatRejection(outcome.error)) {
+        return this.disableStructured(outcome.error);
+      }
       const cls = classifyError(outcome.error);
       return {
         text: "",
@@ -120,6 +177,9 @@ export class OpencodeAdapter implements HostAdapter {
       .filter((p): p is Extract<typeof p, { type: "text" }> => p.type === "text")
       .map((p) => p.text)
       .join("");
+    // Native structured output: the server attaches the parsed object to the
+    // assistant message. Read it via a narrow cast (absent on the v1 typings).
+    const structured = (info as { structured?: unknown }).structured;
 
     // Account the FULL cost/tokens of this turn (incl. tool-loop assistant
     // messages), not just the final message. Per-session offset prevents
@@ -127,6 +187,10 @@ export class OpencodeAdapter implements HostAdapter {
     const usage = await this.turnUsage(req.sessionId, info);
 
     if (info.error != null) {
+      // Note: a rejected `format` field is a request-validation error (the !data
+      // branch above), never a mid-generation 200 error — so we do not retry the
+      // format downgrade here, which also avoids dropping this turn's accounted
+      // tokens and re-running the fallback on a polluted session.
       const cls = classifyError(info.error);
       return {
         text,
@@ -145,6 +209,28 @@ export class OpencodeAdapter implements HostAdapter {
       cost: usage.cost,
       aborted: false,
       errored: false,
+      ...(structured !== undefined ? { structured } : {}),
+    };
+  }
+
+  /**
+   * The server rejected the `format` field — disable native structured output
+   * for the rest of the run and tell the core to retry via its portable
+   * prompt-envelope path. The turn's tokens were not produced, so report zero.
+   */
+  private disableStructured(error: unknown): AgentResult {
+    this.structuredSupported = false;
+    this.logStream.write(
+      "⚠ server rejected native structured output (format); falling back to prompt-envelope\n",
+    );
+    return {
+      text: "",
+      tokens: { input: 0, output: 0, reasoning: 0 },
+      cost: 0,
+      aborted: false,
+      errored: false,
+      formatUnsupported: true,
+      errorDetail: describe(error),
     };
   }
 
@@ -351,6 +437,35 @@ function classifyError(error: unknown): { aborted: boolean; retriable: boolean }
   }
   // Unknown / transport error → retry (transient until proven otherwise).
   return { aborted: false, retriable: true };
+}
+
+/** Whether an error has a 400/bad-request shape (status, name, or hey-api). */
+function isBadRequest(error: unknown): boolean {
+  const e = error as
+    | { name?: string; statusCode?: number; data?: { statusCode?: number }; success?: boolean }
+    | null;
+  if (!e || typeof e !== "object") return false;
+  if (e.name === "BadRequestError" || e.name === "InvalidRequestError") return true;
+  const code = e.data?.statusCode ?? e.statusCode;
+  if (code === 400) return true;
+  // hey-api BadRequest shape: { success: false } with no name.
+  if ("success" in e && e.success === false) return true;
+  return false;
+}
+
+/**
+ * Whether an error is specifically the opencode server rejecting the `format`
+ * field (an older server without native structured output). Requires BOTH a
+ * bad-request shape AND the error text naming format/schema — so a generic 400
+ * (wrong model, unknown agent, malformed prompt) is NOT mistaken for it and does
+ * not trigger the one-time native downgrade.
+ */
+function isFormatRejection(error: unknown): boolean {
+  if (!isBadRequest(error)) return false;
+  const text = describe(error).toLowerCase();
+  return /format|json[_-]?schema|unrecognized|unknown (field|key|propert)|additional propert|unexpected (key|field|propert)/.test(
+    text,
+  );
 }
 
 function describe(error: unknown): string {

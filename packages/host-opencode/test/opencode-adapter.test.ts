@@ -186,6 +186,97 @@ describe("OpencodeAdapter cost/token summation (P1-7)", () => {
   });
 });
 
+describe("OpencodeAdapter native structured output", () => {
+  const schema = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] };
+
+  test("advertises structuredOutput capability", () => {
+    const { client } = fakeClient({});
+    expect(makeAdapter(client).capabilities.structuredOutput).toBe(true);
+  });
+
+  test("sends a json_schema format only when req.schema is set", async () => {
+    const bodies: Array<{ format?: unknown }> = [];
+    const { client } = fakeClient({
+      prompt: async (opts) => {
+        bodies.push((opts as { body: { format?: unknown } }).body);
+        return { data: okData };
+      },
+    });
+    const adapter = makeAdapter(client);
+    await adapter.runAgent(baseReq());
+    await adapter.runAgent(baseReq({ schema, schemaRetries: 2 }));
+    expect(bodies[0]!.format).toBeUndefined();
+    expect(bodies[1]!.format).toEqual({ type: "json_schema", schema, retryCount: 2 });
+  });
+
+  test("reads the structured payload back from the assistant message", async () => {
+    const { client } = fakeClient({
+      promptData: { ...okData, info: { ...okData.info, structured: { ok: true } } },
+    });
+    const res = await makeAdapter(client).runAgent(baseReq({ schema }));
+    expect(res.structured).toEqual({ ok: true });
+    expect(res.errored).toBe(false);
+  });
+
+  test("downgrades only on a format-specific 400, then stops sending format", async () => {
+    let calls = 0;
+    const bodies: Array<{ format?: unknown }> = [];
+    const { client } = fakeClient({
+      prompt: async (opts) => {
+        calls++;
+        bodies.push((opts as { body: { format?: unknown } }).body);
+        // First call carries format → reject with a 400 that NAMES format.
+        if (calls === 1) {
+          return { data: undefined, error: { name: "BadRequestError", data: { message: 'unrecognized field "format"' } } };
+        }
+        return { data: okData };
+      },
+    });
+    const adapter = makeAdapter(client);
+    const first = await adapter.runAgent(baseReq({ schema }));
+    expect(first.formatUnsupported).toBe(true);
+    expect(adapter.capabilities.structuredOutput).toBe(false);
+    // Next schema call no longer sends format (capability downgraded for the run).
+    const second = await adapter.runAgent(baseReq({ schema }));
+    expect(second.formatUnsupported).toBeUndefined();
+    expect(bodies[1]!.format).toBeUndefined();
+  });
+
+  test("a generic 400 (not about format) does NOT downgrade native (B1)", async () => {
+    const { client } = fakeClient({
+      promptData: undefined,
+      promptError: { name: "BadRequestError", data: { message: "unknown model foo", statusCode: 400 } },
+    });
+    const adapter = makeAdapter(client);
+    const res = await adapter.runAgent(baseReq({ schema }));
+    // It is a real error, not a format downgrade — native stays enabled.
+    expect(res.formatUnsupported).toBeUndefined();
+    expect(res.errored).toBe(true);
+    expect(adapter.capabilities.structuredOutput).toBe(true);
+  });
+
+  test("applies host-configured defaultTools and per-agent agentTools", async () => {
+    const bodies: Array<{ tools?: unknown }> = [];
+    const { client } = fakeClient({
+      prompt: async (opts) => {
+        bodies.push((opts as { body: { tools?: unknown } }).body);
+        return { data: okData };
+      },
+    });
+    const adapter = new OpencodeAdapter(client, {
+      rootDirectory: "/r",
+      toast: false,
+      logStream: { write() {} },
+      defaultTools: { write: false },
+      agentTools: { Explore: { edit: false } },
+    });
+    await adapter.runAgent(baseReq({ agent: "Explore" }));
+    await adapter.runAgent(baseReq()); // no agent → defaultTools only
+    expect(bodies[0]!.tools).toEqual({ write: false, edit: false });
+    expect(bodies[1]!.tools).toEqual({ write: false });
+  });
+});
+
 describe("OpencodeAdapter.closeSession (P1-5)", () => {
   test("aborts the session", async () => {
     const { client, aborted } = fakeClient({});

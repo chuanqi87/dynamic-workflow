@@ -63,6 +63,16 @@ describe("RunManager", () => {
     expect(history.find((e) => e.runId === "R1")?.status).toBe("completed");
   });
 
+  test("finish persists the final result for later retrieval", async () => {
+    const path = await tmpIndex();
+    const mgr = new RunManager({ indexPath: path, now: () => 0 });
+    mgr.begin("R1", "demo", "main-1");
+    mgr.finish("R1", "completed", undefined, "the final output");
+    await mgr.flush();
+    const history = await mgr.history();
+    expect(history.find((e) => e.runId === "R1")?.result).toBe("the final output");
+  });
+
   test("ask() pauses and answer() resolves it", async () => {
     const mgr = new RunManager({ now: () => 0 });
     mgr.begin("R1", "demo", "main-1");
