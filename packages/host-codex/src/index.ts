@@ -8,3 +8,5 @@ export type {
   ThreadOptions,
   TurnOptions,
 } from "./codex-sdk.js";
+export { buildWorkflowHandlers, startMcpServer } from "./mcp-entry.js";
+export type { WorkflowHandlerDeps } from "./mcp-entry.js";

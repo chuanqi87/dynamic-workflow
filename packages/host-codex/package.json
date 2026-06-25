@@ -6,11 +6,22 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./cli": { "types": "./dist/cli-runner.d.ts", "default": "./dist/cli-runner.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli-runner.d.ts",
+      "default": "./dist/cli-runner.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp-entry.d.ts",
+      "default": "./dist/mcp-entry.js"
+    }
   },
   "bin": {
-    "workflow-run-codex": "./dist/cli-runner.js"
+    "workflow-run-codex": "./dist/cli-runner.js",
+    "workflow-codex-mcp": "./dist/mcp-entry.js"
   },
   "files": ["dist", "src"],
   "scripts": {
@@ -18,6 +29,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@workflow/core": "workspace:*",
     "@workflow/host-support": "workspace:*"
   },
