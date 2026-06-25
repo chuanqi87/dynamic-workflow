@@ -69,6 +69,21 @@ describe("RunRegistry", () => {
     expect(r.transcript("other")).toEqual([]);
     expect(seen).toEqual(["s1"]);
   });
+
+  test("captures agent group metadata from agent-start", () => {
+    const r = new RunRegistry(() => 0);
+    r.startRun("run-1", "demo", "main-1");
+    r.applyProgress(
+      "run-1",
+      ev({
+        type: "agent-start",
+        label: "p0",
+        sessionId: "s1",
+        group: { id: "g1", kind: "parallel", index: 0 },
+      }),
+    );
+    expect(r.get("run-1")!.agents[0]!.group).toEqual({ id: "g1", kind: "parallel", index: 0 });
+  });
 });
 
 // ── server smoke ────────────────────────────────────────────────────────────

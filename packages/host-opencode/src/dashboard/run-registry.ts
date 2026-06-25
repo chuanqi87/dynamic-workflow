@@ -1,4 +1,4 @@
-import type { NullReason, ProgressEvent, RunSummary } from "@workflow/core";
+import type { AgentGroup, NullReason, ProgressEvent, RunSummary } from "@workflow/core";
 import {
   eventSessionId,
   TranscriptStore,
@@ -27,6 +27,7 @@ export interface AgentView {
   cost?: number;
   retries: number;
   nullReason?: NullReason;
+  group?: AgentGroup;
 }
 
 export interface RunView {
@@ -141,6 +142,7 @@ export class RunRegistry {
           phase: ev.phase ?? run.currentPhase,
           status: "running",
           retries: 0,
+          group: ev.group,
         };
         run.agents.push(a);
         if (ev.sessionId) this.sessionToRun.set(ev.sessionId, runId);
