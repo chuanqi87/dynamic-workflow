@@ -17,8 +17,6 @@ import { OpencodeTranscriptTranslator, type OpencodeEventLike } from "./opencode
 import { readConfig, readToolConfig } from "./read-config.js";
 import { resolveSource } from "./resolve-source.js";
 
-export { autoConcurrency };
-
 const translator = new OpencodeTranscriptTranslator();
 
 /**

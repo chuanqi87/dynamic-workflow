@@ -15,7 +15,6 @@
 import { runWorkflow } from "@workflow/core";
 import {
   autoConcurrency,
-  DashboardServer,
   FileJournalSink,
   fileJournalSource,
   indexPath,
@@ -34,7 +33,6 @@ export interface WorkflowHandlerDeps {
   directory: string;
   codex: CodexLike;
   manager: RunManager;
-  dashboard?: DashboardServer;
 }
 
 interface RunArgs {

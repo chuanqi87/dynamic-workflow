@@ -11,8 +11,6 @@ import {
   isCliEntry,
   parseArgv,
 } from "@workflow/host-support";
-export { parseArgv } from "@workflow/host-support";
-export type { ParsedArgs } from "@workflow/host-support";
 import { CodexAdapter } from "./codex-adapter.js";
 import type { CodexLike } from "./codex-sdk.js";
 import { createCodex } from "./codex-factory.js";
