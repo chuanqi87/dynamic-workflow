@@ -3,7 +3,6 @@ import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { RunRegistry } from "./run-registry.js";
-import { FALLBACK_HTML } from "./ui.js";
 
 // dist layout: <pkg>/dist/dashboard/server.js → <pkg>/dashboard-dist
 const ASSET_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "dashboard-dist");
@@ -150,8 +149,8 @@ export class DashboardServer {
     notFound(res);
   }
 
-  /** Serve a built asset; fall back to index.html (SPA); fall back to the
-   *  placeholder page when nothing is built. */
+  /** Serve a built asset; fall back to index.html (SPA); fall back to a
+   *  plain-text build hint when nothing is built. */
   private async serveStatic(pathname: string, res: ServerResponse): Promise<void> {
     const rel = pathname === "/" ? "/index.html" : pathname;
     // Prevent path traversal: resolved file must stay under ASSET_ROOT.
@@ -173,7 +172,7 @@ export class DashboardServer {
           res.end(index);
           return;
         } catch {
-          /* fall through to placeholder */
+          /* fall through to the build hint */
         }
       }
       return this.serveFallback(res);
@@ -181,8 +180,8 @@ export class DashboardServer {
   }
 
   private serveFallback(res: ServerResponse): void {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(FALLBACK_HTML);
+    res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Workflow dashboard assets not built. Run `bun run build:dashboard` and reload.");
   }
 
   private openSse(res: ServerResponse, kind: "run" | "session", id: string): void {
