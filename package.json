@@ -1,0 +1,22 @@
+{
+  "name": "opencode-dynamic-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portable dynamic-workflow runtime: write one workflow script, run it on both Claude Code and opencode.",
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "bun test packages/core/src packages/host-opencode/src",
+    "typecheck": "tsc -b",
+    "portability-check": "bun run scripts/portability-check.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "license": "MIT"
+}

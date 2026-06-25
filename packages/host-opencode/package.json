@@ -1,0 +1,38 @@
+{
+  "name": "@workflow/host-opencode",
+  "version": "0.1.0",
+  "description": "opencode host adapter + plugin entry + headless CLI runner for portable dynamic workflows.",
+  "type": "module",
+  "main": "./dist/plugin-entry.js",
+  "types": "./dist/plugin-entry.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin-entry.d.ts",
+      "default": "./dist/plugin-entry.js"
+    },
+    "./cli": {
+      "types": "./dist/cli-runner.d.ts",
+      "default": "./dist/cli-runner.js"
+    }
+  },
+  "bin": {
+    "workflow-run": "./dist/cli-runner.js"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@workflow/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.14.0",
+    "@opencode-ai/sdk": ">=1.14.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.14.37",
+    "@opencode-ai/sdk": "^1.14.37"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,98 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { Plugin } from "@opencode-ai/plugin";
+import { WorkflowPlugin } from "./plugin-entry.js";
+
+function fakeInput(directory: string): Parameters<Plugin>[0] {
+  const client = {
+    session: {
+      create: async () => ({ data: { id: "child-1" } }),
+      prompt: async (opts: { body: { parts: Array<{ text: string }> } }) => ({
+        data: {
+          info: { tokens: { input: 1, output: 3, reasoning: 0 }, cost: 0, error: null },
+          parts: [{ type: "text", text: `echo:${opts.body.parts[0]!.text}` }],
+        },
+      }),
+      abort: async () => ({ data: true }),
+    },
+    app: { agents: async () => ({ data: [] }) },
+    tui: { showToast: async () => ({ data: true }) },
+  } as unknown as OpencodeClient;
+
+  return {
+    client,
+    directory,
+    worktree: directory,
+    project: {} as never,
+    serverUrl: new URL("http://localhost:0"),
+    $: (() => {}) as never,
+    experimental_workspace: { register() {} } as never,
+  };
+}
+
+function fakeCtx(directory: string) {
+  return {
+    sessionID: "s1",
+    messageID: "m1",
+    agent: "build",
+    directory,
+    worktree: directory,
+    abort: new AbortController().signal,
+    metadata() {},
+    ask() {},
+  } as never;
+}
+
+describe("WorkflowPlugin", () => {
+  test("registers a workflow tool and a /workflow command", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    expect(typeof hooks.tool?.workflow?.execute).toBe("function");
+    expect(hooks.tool?.workflow?.description).toContain("portable");
+
+    const config: { command?: Record<string, unknown> } = {};
+    await hooks.config?.(config as never);
+    expect(config.command?.workflow).toBeDefined();
+  });
+
+  test("runs an inline script end-to-end through the opencode adapter", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const result = await hooks.tool!.workflow!.execute(
+      {
+        script: `export const meta = { name: "t", description: "d" };
+const a = await agent("hi");
+const b = await parallel([() => agent("x"), () => agent("y")]);
+return { a, b };`,
+      },
+      fakeCtx(dir),
+    );
+    const out = typeof result === "string" ? result : result.output;
+    const parsed = JSON.parse(out);
+    expect(parsed.a).toBe("echo:hi");
+    expect(parsed.b).toEqual(["echo:x", "echo:y"]);
+  });
+
+  test("rejects an invalid script via the validator", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    await expect(
+      hooks.tool!.workflow!.execute(
+        { script: `export const meta = { name: "t", description: "d" };\nreturn Math.random();` },
+        fakeCtx(dir),
+      ),
+    ).rejects.toThrow(/validation/i);
+  });
+
+  test("registers an event hook only when the dashboard is enabled", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    // Constructing the plugin does NOT start a server (that is lazy, on run).
+    const withDash = await WorkflowPlugin(fakeInput(dir), {});
+    const noDash = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    expect(typeof withDash.event).toBe("function");
+    expect(noDash.event).toBeUndefined();
+  });
+});
