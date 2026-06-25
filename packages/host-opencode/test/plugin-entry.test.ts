@@ -153,6 +153,105 @@ return { a, b };`;
     expect(persisted?.result).toContain("echo:hi");
   });
 
+  test("sub-agents inherit the session model that invoked the tool", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const input = fakeInput(dir);
+    const seen: unknown[] = [];
+    const session = (input.client as unknown as { session: Record<string, unknown> }).session;
+    // The assistant message that invoked the workflow tool carries the model.
+    session.message = async () => ({
+      data: { info: { role: "assistant", providerID: "deepseek", modelID: "deepseek-chat" } },
+    });
+    session.prompt = async (opts: { body: { model?: unknown; parts: Array<{ text: string }> } }) => {
+      seen.push(opts.body.model);
+      return {
+        data: {
+          info: { tokens: { input: 1, output: 3, reasoning: 0 }, cost: 0, error: null },
+          parts: [{ type: "text", text: `echo:${opts.body.parts[0]!.text}` }],
+        },
+      };
+    };
+    const hooks = await WorkflowPlugin(input, { dashboard: false });
+    const script = `export const meta = { name: "t", description: "d" };\nreturn await agent("hi");`;
+    await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
+    expect(seen).toEqual([{ providerID: "deepseek", modelID: "deepseek-chat" }]);
+  });
+
+  test("an explicit plugin defaultModel wins over the session model", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const input = fakeInput(dir);
+    const seen: unknown[] = [];
+    const session = (input.client as unknown as { session: Record<string, unknown> }).session;
+    session.message = async () => {
+      throw new Error("should not be consulted when defaultModel is set");
+    };
+    session.prompt = async (opts: { body: { model?: unknown; parts: Array<{ text: string }> } }) => {
+      seen.push(opts.body.model);
+      return {
+        data: {
+          info: { tokens: { input: 1, output: 3, reasoning: 0 }, cost: 0, error: null },
+          parts: [{ type: "text", text: `echo:${opts.body.parts[0]!.text}` }],
+        },
+      };
+    };
+    const hooks = await WorkflowPlugin(input, {
+      dashboard: false,
+      defaultModel: "anthropic/claude-opus-4-8",
+    });
+    const script = `export const meta = { name: "t", description: "d" };\nreturn await agent("hi");`;
+    await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
+    expect(seen).toEqual([{ providerID: "anthropic", modelID: "claude-opus-4-8" }]);
+  });
+
+  test("falls back to the host default when the session model lookup fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const input = fakeInput(dir);
+    const seen: unknown[] = [];
+    const session = (input.client as unknown as { session: Record<string, unknown> }).session;
+    session.message = async () => {
+      throw new Error("message endpoint unavailable");
+    };
+    session.prompt = async (opts: { body: { model?: unknown; parts: Array<{ text: string }> } }) => {
+      seen.push(opts.body.model);
+      return {
+        data: {
+          info: { tokens: { input: 1, output: 3, reasoning: 0 }, cost: 0, error: null },
+          parts: [{ type: "text", text: `echo:${opts.body.parts[0]!.text}` }],
+        },
+      };
+    };
+    const hooks = await WorkflowPlugin(input, { dashboard: false });
+    const script = `export const meta = { name: "t", description: "d" };\nreturn await agent("hi");`;
+    await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
+    // No model sent → the host (opencode) picks its own default.
+    expect(seen).toEqual([undefined]);
+  });
+
+  test("does not write the progress tree to stderr in the plugin/TUI path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const original = process.stderr.write.bind(process.stderr);
+    const captured: string[] = [];
+    process.stderr.write = ((chunk: unknown) => {
+      captured.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const script = `export const meta = { name: "t", description: "d", phases: [{ title: "P" }] };
+phase("P");
+return await agent("hi");`;
+      await hooks.tool!.workflow!.execute({ script }, fakeCtx(dir));
+    } finally {
+      process.stderr.write = original;
+    }
+    const all = captured.join("");
+    // The toasts + dashboard carry progress; the tool's stderr stays quiet so
+    // opencode does not render a duplicate live block in the TUI.
+    expect(all).not.toContain("▶ workflow");
+    expect(all).not.toContain("── phase");
+    expect(all).not.toContain("✓ ");
+  });
+
   test("registers an event hook only when the dashboard is enabled", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
     // Constructing the plugin does NOT start a server (that is lazy, on run).

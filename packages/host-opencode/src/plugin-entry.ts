@@ -1,5 +1,6 @@
 import { cpus } from "node:os";
 import { type Plugin, tool } from "@opencode-ai/plugin";
+import type { OpencodeClient } from "@opencode-ai/sdk";
 import { runWorkflow } from "@workflow/core";
 import { AUTHORING_GUIDE } from "./authoring-guide.js";
 import { DashboardServer } from "./dashboard/server.js";
@@ -16,6 +17,48 @@ import { persistScript } from "./script-store.js";
 export function autoConcurrency(): number {
   const cores = cpus().length || 4;
   return Math.min(16, Math.max(1, cores - 2));
+}
+
+/**
+ * Swallows the adapter's textual progress in the plugin/TUI path. opencode
+ * captures a tool's stderr while it runs and renders it as a live block, so the
+ * default `process.stderr` stream would duplicate the progress tree the toasts
+ * and dashboard already show. The headless CLI keeps the default stderr stream
+ * (there it is the primary way to watch a run).
+ */
+const SILENT_LOG_STREAM = { write(_s: string): void {} };
+
+/**
+ * Best-effort: read the model the host used for the assistant message that
+ * invoked the workflow tool, so sub-agents inherit it by default — mirroring
+ * Claude Code, where agents run on the main-loop model unless overridden.
+ * Returns a `"providerID/modelID"` string the mapper resolves directly, or
+ * undefined (fall back to the host's own default) if the lookup fails or the
+ * message carries no model. Wired in as `defaultModel`, the mapper's lowest
+ * priority, so per-agent `model`, `modelMap`, and an explicit plugin
+ * `defaultModel` all still take precedence.
+ *
+ * NOTE: module-private on purpose. opencode loads every *exported* function in a
+ * plugin file as a plugin; an exported helper that resolves to a non-object
+ * (here, undefined) crashes the host's hook dispatch. Keep new helpers unexported.
+ */
+async function resolveSessionModel(
+  client: OpencodeClient,
+  sessionID: string,
+  messageID: string,
+  directory: string,
+): Promise<string | undefined> {
+  try {
+    const res = await client.session.message({
+      path: { id: sessionID, messageID },
+      query: { directory },
+    });
+    const info = res.data?.info as { providerID?: string; modelID?: string } | undefined;
+    if (info?.providerID && info.modelID) return `${info.providerID}/${info.modelID}`;
+  } catch {
+    // best-effort; never block a run on model inheritance
+  }
+  return undefined;
 }
 
 /**
@@ -117,12 +160,21 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             rootDirectory: worktree ?? dir,
             directory: dir,
             toast: true,
+            // Progress reaches the user via toasts + dashboard; keep it off the
+            // tool's stderr so opencode doesn't render a duplicate live block.
+            logStream: SILENT_LOG_STREAM,
             onEvent: (ev) => manager.registry.applyProgress(runId, ev),
             onQuestion: (q) => manager.ask(runId, q.question, q.options, q.timeoutMs),
             defaultTools: toolCfg.defaultTools,
             agentTools: toolCfg.agentTools,
           });
           const sink = new FileJournalSink(journalPath(dir, runId));
+
+          // Default sub-agents to the model that invoked this tool, so the run
+          // inherits the session's model (Claude Code semantics). An explicit
+          // plugin `defaultModel` wins; the lookup is skipped when one is set.
+          const defaultModel =
+            cfg.defaultModel ?? (await resolveSessionModel(client, ctx.sessionID, ctx.messageID, dir));
 
           // One run, finalized identically whether awaited (foreground) or
           // detached (background): persist result + status, then return the
@@ -137,6 +189,7 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
                 config: {
                   ...cfg,
                   concurrency: cfg.concurrency ?? autoConcurrency(),
+                  ...(defaultModel ? { defaultModel } : {}),
                   args: args.input,
                   parentSessionId: ctx.sessionID,
                   signal,
