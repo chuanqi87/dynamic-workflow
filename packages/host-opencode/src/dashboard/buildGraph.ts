@@ -124,8 +124,13 @@ export function buildGraph(run: GraphRun): { nodes: GraphNode[]; edges: GraphEdg
     bucket.push(a);
   }
   for (const group of byItem.values()) {
-    const sorted = [...group].sort((x, y) => (x.group!.stageIndex! - y.group!.stageIndex!));
+    const sorted = [...group].sort((x, y) => {
+      const d = x.group!.stageIndex! - y.group!.stageIndex!;
+      if (d !== 0) return d;
+      return (agentIds.get(x) ?? "").localeCompare(agentIds.get(y) ?? "");
+    });
     for (let i = 1; i < sorted.length; i++) {
+      // Every agent in run.agents was registered in agentIds above, so these lookups are total.
       const from = agentIds.get(sorted[i - 1]!)!;
       const to = agentIds.get(sorted[i]!)!;
       edges.push({ id: `e:${from}->${to}`, source: from, target: to });
