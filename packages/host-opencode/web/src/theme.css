@@ -1,0 +1,28 @@
+:root {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #57606a;
+  --accent: #2563eb;
+  --running: #2563eb;
+  --done: #1a7f37;
+  --null: #cf222e;
+  --retrying: #bf8700;
+  --pending: #6e7781;
+  --shadow: 0 1px 3px rgba(27, 31, 36, 0.08), 0 1px 2px rgba(27, 31, 36, 0.06);
+  --radius: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.shell { display: grid; grid-template-columns: 240px 1fr; height: 100vh; }
+.rail { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; }
+.main { position: relative; overflow: hidden; }
+.badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.badge.running { background: #ddeafe; color: var(--running); }
+.badge.completed, .badge.done { background: #d3f3dd; color: var(--done); }
+.badge.failed, .badge.null { background: #ffd8d3; color: var(--null); }
+.badge.retrying { background: #fbf0d0; color: var(--retrying); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+.badge.running { animation: pulse 1.6s ease-in-out infinite; }

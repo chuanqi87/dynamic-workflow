@@ -1,9 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-
-function App(): React.ReactElement {
-  return <div data-testid="app-root">Workflow Dashboard</div>;
-}
+import { AppShell } from "./AppShell.js";
+import "./theme.css";
 
 const el = document.getElementById("root");
-if (el) createRoot(el).render(<App />);
+if (el) createRoot(el).render(<AppShell />);
