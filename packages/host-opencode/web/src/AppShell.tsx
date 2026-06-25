@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { fetchRuns, type RunListItem } from "./api.js";
+import { GraphCanvas } from "./GraphCanvas.js";
 
 export function AppShell(): React.ReactElement {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  void selectedNode;
 
   useEffect(() => {
     const tick = () => void fetchRuns().then(setRuns);
@@ -36,9 +39,7 @@ export function AppShell(): React.ReactElement {
       </aside>
       <main className="main">
         {selected ? (
-          <div data-testid="graph-slot" data-run={selected} style={{ padding: 16 }}>
-            Graph for {selected} (filled in Task 8).
-          </div>
+          <GraphCanvas runId={selected} onSelectNode={setSelectedNode} />
         ) : (
           <div style={{ padding: 24, color: "var(--muted)" }}>Select a run.</div>
         )}
