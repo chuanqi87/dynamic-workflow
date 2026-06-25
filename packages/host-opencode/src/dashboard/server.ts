@@ -1,6 +1,27 @@
+import { readFile } from "node:fs/promises";
+import { dirname, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { RunRegistry } from "./run-registry.js";
-import { DASHBOARD_HTML } from "./ui.js";
+import { FALLBACK_HTML } from "./ui.js";
+
+// dist layout: <pkg>/dist/dashboard/server.js → <pkg>/dashboard-dist
+const ASSET_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "dashboard-dist");
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".ico": "image/x-icon",
+};
+
+function contentType(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return CONTENT_TYPES[path.slice(dot)] ?? "application/octet-stream";
+}
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 4178;
@@ -61,7 +82,7 @@ export class DashboardServer {
   private listen(preferredPort: number): Promise<string> {
     return new Promise((resolve, reject) => {
       let attempt = 0;
-      const server = createServer((req, res) => this.handle(req, res));
+      const server = createServer((req, res) => void this.handle(req, res));
       const tryPort = (): void => {
         const port = preferredPort + attempt;
         server.once("error", (err: NodeJS.ErrnoException) => {
@@ -84,15 +105,10 @@ export class DashboardServer {
     });
   }
 
-  private handle(req: IncomingMessage, res: ServerResponse): void {
+  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://${HOST}`);
     const path = url.pathname;
 
-    if (path === "/" || path === "/index.html") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(DASHBOARD_HTML);
-      return;
-    }
     if (path === "/api/runs") {
       return json(res, this.registry.list().map(runListItem));
     }
@@ -121,7 +137,42 @@ export class DashboardServer {
     m = /^\/api\/sessions\/([^/]+)\/transcript$/.exec(path);
     if (m) return json(res, this.registry.transcript(decodeURIComponent(m[1]!)));
 
+    // Non-API: serve the built dashboard (or the placeholder).
+    if (!path.startsWith("/api/")) return this.serveStatic(path, res);
     notFound(res);
+  }
+
+  /** Serve a built asset; fall back to index.html (SPA); fall back to the
+   *  placeholder page when nothing is built. */
+  private async serveStatic(pathname: string, res: ServerResponse): Promise<void> {
+    const rel = pathname === "/" ? "/index.html" : pathname;
+    // Prevent path traversal: resolved file must stay under ASSET_ROOT.
+    const filePath = normalize(join(ASSET_ROOT, rel));
+    if (!filePath.startsWith(ASSET_ROOT)) return this.serveFallback(res);
+    try {
+      const body = await readFile(filePath);
+      res.writeHead(200, { "content-type": contentType(filePath) });
+      res.end(body);
+      return;
+    } catch {
+      // SPA fallback: serve index.html for unknown non-asset routes.
+      if (!rel.includes(".")) {
+        try {
+          const index = await readFile(join(ASSET_ROOT, "index.html"));
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          res.end(index);
+          return;
+        } catch {
+          /* fall through to placeholder */
+        }
+      }
+      return this.serveFallback(res);
+    }
+  }
+
+  private serveFallback(res: ServerResponse): void {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(FALLBACK_HTML);
   }
 
   private openSse(res: ServerResponse, kind: "run" | "session", id: string): void {
