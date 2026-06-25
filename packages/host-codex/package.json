@@ -1,0 +1,31 @@
+{
+  "name": "@workflow/host-codex",
+  "version": "0.1.0",
+  "description": "OpenAI Codex host adapter + headless CLI for portable dynamic workflows.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./cli": { "types": "./dist/cli-runner.d.ts", "default": "./dist/cli-runner.js" }
+  },
+  "bin": {
+    "workflow-run-codex": "./dist/cli-runner.js"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@workflow/core": "workspace:*",
+    "@workflow/host-support": "workspace:*"
+  },
+  "peerDependencies": {
+    "@openai/codex-sdk": ">=0.142.0"
+  },
+  "devDependencies": {
+    "@openai/codex-sdk": "^0.142.2"
+  },
+  "license": "MIT"
+}

@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/host-support" },
-    { "path": "./packages/host-opencode" }
+    { "path": "./packages/host-opencode" },
+    { "path": "./packages/host-codex" }
   ]
 }
