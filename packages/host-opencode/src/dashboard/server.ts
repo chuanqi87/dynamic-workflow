@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { dirname, join, normalize, resolve } from "node:path";
+import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { RunRegistry } from "./run-registry.js";
@@ -20,6 +20,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 function contentType(path: string): string {
   const dot = path.lastIndexOf(".");
+  if (dot === -1) return "application/octet-stream";
   return CONTENT_TYPES[path.slice(dot)] ?? "application/octet-stream";
 }
 
@@ -82,7 +83,14 @@ export class DashboardServer {
   private listen(preferredPort: number): Promise<string> {
     return new Promise((resolve, reject) => {
       let attempt = 0;
-      const server = createServer((req, res) => void this.handle(req, res));
+      const server = createServer((req, res) => {
+        this.handle(req, res).catch(() => {
+          if (!res.headersSent) {
+            res.writeHead(500, { "content-type": "text/plain" });
+            res.end("internal error");
+          }
+        });
+      });
       const tryPort = (): void => {
         const port = preferredPort + attempt;
         server.once("error", (err: NodeJS.ErrnoException) => {
@@ -148,7 +156,9 @@ export class DashboardServer {
     const rel = pathname === "/" ? "/index.html" : pathname;
     // Prevent path traversal: resolved file must stay under ASSET_ROOT.
     const filePath = normalize(join(ASSET_ROOT, rel));
-    if (!filePath.startsWith(ASSET_ROOT)) return this.serveFallback(res);
+    if (filePath !== ASSET_ROOT && !filePath.startsWith(ASSET_ROOT + sep)) {
+      return this.serveFallback(res);
+    }
     try {
       const body = await readFile(filePath);
       res.writeHead(200, { "content-type": contentType(filePath) });
