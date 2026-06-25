@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { runWorkflow } from "./engine.js";
-import type { AgentRequest, AgentResult, HostAdapter } from "./types.js";
+import { runWorkflow } from "../src/engine.js";
+import type { AgentRequest, AgentResult, HostAdapter } from "../src/types.js";
 
 interface MockReply {
   text?: string;

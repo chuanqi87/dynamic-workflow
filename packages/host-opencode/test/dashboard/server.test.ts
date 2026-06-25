@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DashboardServer } from "./server.js";
+import { DashboardServer } from "../../src/dashboard/server.js";
 
 let server: DashboardServer | undefined;
 

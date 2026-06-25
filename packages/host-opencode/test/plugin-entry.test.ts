@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
-import { WorkflowPlugin } from "./plugin-entry.js";
+import { WorkflowPlugin } from "../src/plugin-entry.js";
 
 function fakeInput(directory: string): Parameters<Plugin>[0] {
   const client = {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgv } from "./cli-runner.js";
+import { parseArgv } from "../src/cli-runner.js";
 
 describe("parseArgv", () => {
   test("parses the script path and flags", () => {

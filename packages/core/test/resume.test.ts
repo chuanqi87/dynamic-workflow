@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { runWorkflow } from "./engine.js";
-import type { AgentRequest, AgentResult, HostAdapter, JournalSink, ProgressEvent } from "./types.js";
+import { runWorkflow } from "../src/engine.js";
+import type { AgentRequest, AgentResult, HostAdapter, JournalSink, ProgressEvent } from "../src/types.js";
 
 class MemSink implements JournalSink {
   lines: string[] = [];

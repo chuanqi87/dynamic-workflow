@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ProgressEvent } from "@workflow/core";
-import { RunRegistry } from "./run-registry.js";
+import { RunRegistry } from "../../src/dashboard/run-registry.js";
 
 const meta = { name: "demo", description: "d" };
 

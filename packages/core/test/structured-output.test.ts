@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractJson, runStructured } from "./structured-output.js";
+import { extractJson, runStructured } from "../src/structured-output.js";
 
 describe("extractJson", () => {
   test("extracts from a fenced json block", () => {

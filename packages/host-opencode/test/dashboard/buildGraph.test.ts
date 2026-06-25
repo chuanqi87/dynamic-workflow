@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildGraph, type GraphRun } from "./buildGraph.js";
+import { buildGraph, type GraphRun } from "../../src/dashboard/buildGraph.js";
 
 const agent = (over: Partial<GraphRun["agents"][number]>): GraphRun["agents"][number] => ({
   label: "a",

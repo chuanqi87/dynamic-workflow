@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RunIndex } from "./dashboard/run-index.js";
-import { RunManager } from "./run-manager.js";
+import { RunIndex } from "../src/dashboard/run-index.js";
+import { RunManager } from "../src/run-manager.js";
 
 async function tmpIndex(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "wf-idx-"));

@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc -b && bun run --filter='@workflow/host-opencode' build:dashboard",
-    "test": "bun test packages/core/src packages/host-opencode/src",
+    "test": "bun test packages/core/test packages/host-opencode/test",
     "typecheck": "tsc -b",
     "portability-check": "bun run scripts/portability-check.ts"
   },

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { runWorkflow } from "./engine.js";
+import { runWorkflow } from "../src/engine.js";
 import type {
   AgentRequest,
   AgentResult,
   HostAdapter,
   JournalSink,
   ProgressEvent,
-} from "./types.js";
+} from "../src/types.js";
 
 /** Per-call reply description for the mock host. */
 interface Reply {

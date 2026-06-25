@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { currentFrames, runInFrame, type Frame } from "./orchestration-context.js";
+import { currentFrames, runInFrame, type Frame } from "../src/orchestration-context.js";
 
 const f = (groupId: string, extra: Partial<Frame> = {}): Frame => ({
   kind: "parallel",

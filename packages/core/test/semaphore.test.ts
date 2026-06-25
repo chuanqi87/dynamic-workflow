@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Semaphore } from "./semaphore.js";
+import { Semaphore } from "../src/semaphore.js";
 
 describe("Semaphore", () => {
   test("never exceeds the configured limit, even under bursty release/acquire", async () => {

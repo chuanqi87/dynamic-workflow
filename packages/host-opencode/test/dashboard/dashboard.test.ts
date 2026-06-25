@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ProgressEvent } from "@workflow/core";
-import { RunRegistry } from "./run-registry.js";
-import { DashboardServer } from "./server.js";
-import { eventSessionId, TranscriptStore } from "./transcript.js";
+import { RunRegistry } from "../../src/dashboard/run-registry.js";
+import { DashboardServer } from "../../src/dashboard/server.js";
+import { eventSessionId, TranscriptStore } from "../../src/dashboard/transcript.js";
 
 // ── transcript reducer ──────────────────────────────────────────────────────
 describe("TranscriptStore", () => {

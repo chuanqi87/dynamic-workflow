@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { AgentRequest } from "@workflow/core";
-import { OpencodeAdapter } from "./opencode-adapter.js";
+import { OpencodeAdapter } from "../src/opencode-adapter.js";
 
 interface FakeBehaviour {
   promptData?: unknown;

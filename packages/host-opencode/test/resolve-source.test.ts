@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readConfig } from "./read-config.js";
-import { resolveSource } from "./resolve-source.js";
+import { readConfig } from "../src/read-config.js";
+import { resolveSource } from "../src/resolve-source.js";
 
 describe("resolveSource", () => {
   test("returns inline script verbatim", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateScript } from "./portability-validator.js";
+import { validateScript } from "../src/portability-validator.js";
 
 const VALID = `export const meta = {
   name: "demo",

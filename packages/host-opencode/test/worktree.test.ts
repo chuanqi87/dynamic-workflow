@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { OpencodeClient } from "@opencode-ai/sdk";
-import { OpencodeAdapter } from "./opencode-adapter.js";
+import { OpencodeAdapter } from "../src/opencode-adapter.js";
 
 const run = promisify(execFile);
 const exists = (p: string) =>

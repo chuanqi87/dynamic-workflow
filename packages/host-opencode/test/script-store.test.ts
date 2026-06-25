@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { persistScript, scriptPath } from "./script-store.js";
+import { persistScript, scriptPath } from "../src/script-store.js";
 
 const tmp = () => mkdtemp(join(tmpdir(), "wf-script-"));
 

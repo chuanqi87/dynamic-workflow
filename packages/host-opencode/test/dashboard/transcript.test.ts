@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { eventSessionId, TranscriptStore } from "./transcript.js";
+import { eventSessionId, TranscriptStore } from "../../src/dashboard/transcript.js";
 
 const partUpdated = (sessionID: string, messageID: string, id: string, text: string, type = "text") => ({
   type: "message.part.updated",

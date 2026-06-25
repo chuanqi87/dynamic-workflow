@@ -16,9 +16,9 @@ contract lives in one place: [`packages/spec/WORKFLOW_SCRIPT_SPEC.md`](./package
 bun install
 bun run build                                   # tsc -b across all packages (also the typecheck)
 bun run typecheck                               # alias for tsc -b
-bun test packages/core/src packages/host-opencode/src   # full suite (~90 tests, offline)
-bun test packages/core/src/engine.test.ts       # run one test file
-bun test packages/core/src -t "budget"          # run tests matching a name
+bun test packages/core/test packages/host-opencode/test  # full suite (~90 tests, offline)
+bun test packages/core/test/engine.test.ts      # run one test file
+bun test packages/core/test -t "budget"         # run tests matching a name
 bun run scripts/portability-check.ts            # validate example scripts against the spec
 ```
 

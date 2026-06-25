@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cacheKey, Journal, parseJournal } from "./journal.js";
+import { cacheKey, Journal, parseJournal } from "../src/journal.js";
 
 describe("cacheKey", () => {
   test("ignores display-only label and phase", () => {

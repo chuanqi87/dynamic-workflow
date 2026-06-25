@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { runWorkflow } from "./engine.js";
+import { runWorkflow } from "../src/engine.js";
 import type {
   AgentRequest,
   AgentResult,
   HostAdapter,
   HostAgentInfo,
   ProgressEvent,
-} from "./types.js";
+} from "../src/types.js";
 
 function fakeAdapter(events: ProgressEvent[]): HostAdapter {
   let n = 0;
