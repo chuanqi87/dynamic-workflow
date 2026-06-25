@@ -1,10 +1,5 @@
 import type { AgentGroup, NullReason, ProgressEvent, RunSummary } from "@workflow/core";
-import {
-  eventSessionId,
-  TranscriptStore,
-  type OpencodeEventLike,
-  type TranscriptMessage,
-} from "./transcript.js";
+import { TranscriptStore, type TranscriptDelta, type TranscriptMessage } from "./transcript-store.js";
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type AgentStatus = "running" | "done" | "null" | "retrying";
@@ -49,7 +44,7 @@ export type RegistryChange = { kind: "run"; runId: string } | { kind: "session";
 /**
  * In-memory store of live workflow runs for the dashboard. Progress (tree,
  * status, counters) comes from our own {@link ProgressEvent}s; conversations
- * come from opencode message events via {@link TranscriptStore}.
+ * come from host-translated {@link TranscriptDelta}s via {@link TranscriptStore}.
  */
 export class RunRegistry {
   private readonly runs = new Map<string, RunView>();
@@ -184,20 +179,14 @@ export class RunRegistry {
   }
 
   /**
-   * Feed an opencode event into the conversation transcripts. Only sessions
-   * that belong to a known run (main or an agent) are stored, so unrelated
-   * chat activity never accumulates in memory.
+   * Feed a normalized transcript delta into the conversation store. Only
+   * sessions belonging to a known run (main or an agent) are stored, so
+   * unrelated activity never accumulates in memory.
    */
-  applyOpencodeEvent(ev: OpencodeEventLike): void {
-    const sid = eventSessionId(ev);
-    if (!sid || !this.sessionToRun.has(sid)) return;
-    this.transcripts.apply(ev);
-    this.notify({ kind: "session", sessionId: sid });
-  }
-
-  /** Backfill a transcript from a fetched message list (when a viewer opens). */
-  seedTranscript(events: OpencodeEventLike[]): void {
-    for (const ev of events) this.transcripts.apply(ev);
+  applyTranscript(delta: TranscriptDelta): void {
+    if (!this.sessionToRun.has(delta.sessionId)) return;
+    this.transcripts.apply(delta);
+    this.notify({ kind: "session", sessionId: delta.sessionId });
   }
 
   get(runId: string): RunView | undefined {

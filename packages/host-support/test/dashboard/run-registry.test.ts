@@ -34,18 +34,13 @@ describe("RunRegistry progress", () => {
 });
 
 describe("RunRegistry transcripts", () => {
-  const msgEvent = (sessionID: string) => ({
-    type: "message.part.updated",
-    properties: { part: { sessionID, messageID: "M1", id: "p", type: "text", text: "hi" } },
-  });
-
   test("stores transcripts only for sessions belonging to a run", () => {
     const reg = new RunRegistry(() => 0);
     reg.startRun("R1", "demo", "main-1");
     reg.applyProgress("R1", { type: "agent-start", label: "x", sessionId: "a-1" });
 
-    reg.applyOpencodeEvent(msgEvent("a-1")); // known agent session → stored
-    reg.applyOpencodeEvent(msgEvent("unrelated")); // unknown → ignored
+    reg.applyTranscript({ sessionId: "a-1", messageId: "M1", role: "assistant", text: "hi" }); // known agent session → stored
+    reg.applyTranscript({ sessionId: "unrelated", messageId: "M1", role: "assistant", text: "hi" }); // unknown → ignored
 
     expect(reg.transcript("a-1").map((m) => m.text)).toEqual(["hi"]);
     expect(reg.transcript("unrelated")).toEqual([]);
@@ -56,7 +51,7 @@ describe("RunRegistry transcripts", () => {
     const seen: string[] = [];
     reg.on((c) => seen.push(c.kind));
     reg.startRun("R1", "demo", "main-1");
-    reg.applyOpencodeEvent(msgEvent("main-1"));
+    reg.applyTranscript({ sessionId: "main-1", messageId: "M1", role: "assistant", text: "hello" });
     expect(seen).toContain("run");
     expect(seen).toContain("session");
   });

@@ -2,15 +2,14 @@ import { describe, expect, test } from "bun:test";
 import type { ProgressEvent } from "@workflow/core";
 import { RunRegistry } from "../../src/dashboard/run-registry.js";
 import { DashboardServer } from "../../src/dashboard/server.js";
-import { eventSessionId, TranscriptStore } from "../../src/dashboard/transcript.js";
+import { TranscriptStore } from "../../src/dashboard/transcript-store.js";
 
 // ── transcript reducer ──────────────────────────────────────────────────────
 describe("TranscriptStore", () => {
-  test("reduces part + message events into an ordered transcript", () => {
+  test("accumulates messages by last-write-wins per messageId", () => {
     const t = new TranscriptStore();
-    t.apply({ type: "message.part.updated", properties: { part: { sessionID: "s1", messageID: "m1", id: "p1", type: "text", text: "Hello" } } });
-    t.apply({ type: "message.part.updated", properties: { part: { sessionID: "s1", messageID: "m1", id: "p1", type: "text", text: "Hello world" } } });
-    t.apply({ type: "message.updated", properties: { info: { id: "m1", sessionID: "s1", role: "assistant", cost: 0.02, tokens: { output: 7 } } } });
+    t.apply({ sessionId: "s1", messageId: "m1", role: "assistant", text: "Hello" });
+    t.apply({ sessionId: "s1", messageId: "m1", role: "assistant", text: "Hello world", tokens: 7, cost: 0.02 });
     const msgs = t.get("s1");
     expect(msgs.length).toBe(1);
     expect(msgs[0]).toMatchObject({ role: "assistant", text: "Hello world", tokens: 7, cost: 0.02 });
@@ -18,15 +17,10 @@ describe("TranscriptStore", () => {
 
   test("keeps message order and isolates sessions", () => {
     const t = new TranscriptStore();
-    t.apply({ type: "message.part.updated", properties: { part: { sessionID: "s1", messageID: "m1", id: "p", type: "text", text: "first" } } });
-    t.apply({ type: "message.part.updated", properties: { part: { sessionID: "s1", messageID: "m2", id: "p", type: "text", text: "second" } } });
+    t.apply({ sessionId: "s1", messageId: "m1", role: "assistant", text: "first" });
+    t.apply({ sessionId: "s1", messageId: "m2", role: "user", text: "second" });
     expect(t.get("s1").map((m) => m.text)).toEqual(["first", "second"]);
     expect(t.get("s2")).toEqual([]);
-  });
-
-  test("eventSessionId peeks without mutating", () => {
-    expect(eventSessionId({ type: "message.updated", properties: { info: { sessionID: "x" } } })).toBe("x");
-    expect(eventSessionId({ type: "something.else" })).toBeUndefined();
   });
 });
 
@@ -61,9 +55,9 @@ describe("RunRegistry", () => {
     r.applyProgress("run-1", ev({ type: "agent-start", label: "a", sessionId: "s1" }));
 
     // belongs to the run → captured + notified
-    r.applyOpencodeEvent({ type: "message.part.updated", properties: { part: { sessionID: "s1", messageID: "m", id: "p", type: "text", text: "hi" } } });
+    r.applyTranscript({ sessionId: "s1", messageId: "m", role: "assistant", text: "hi" });
     // unrelated chat session → ignored
-    r.applyOpencodeEvent({ type: "message.part.updated", properties: { part: { sessionID: "other", messageID: "m", id: "p", type: "text", text: "spam" } } });
+    r.applyTranscript({ sessionId: "other", messageId: "m", role: "assistant", text: "spam" });
 
     expect(r.transcript("s1").map((m) => m.text)).toEqual(["hi"]);
     expect(r.transcript("other")).toEqual([]);
