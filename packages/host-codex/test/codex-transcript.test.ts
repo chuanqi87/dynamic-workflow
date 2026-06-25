@@ -39,4 +39,13 @@ describe("CodexTranscriptTranslator", () => {
       }),
     ).toEqual([]);
   });
+
+  test("emits a reasoning delta for reasoning items", () => {
+    const t = new CodexTranscriptTranslator();
+    const d = t.translate("s", {
+      type: "item.completed",
+      item: { id: "r1", type: "reasoning", text: "thinking..." },
+    });
+    expect(d).toEqual([{ sessionId: "s", messageId: "r1", role: "reasoning", text: "thinking..." }]);
+  });
 });
