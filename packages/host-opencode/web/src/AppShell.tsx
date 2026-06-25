@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { fetchRuns, type RunListItem } from "./api.js";
 import { GraphCanvas } from "./GraphCanvas.js";
+import { NodeDrawer } from "./NodeDrawer.js";
 
 export function AppShell(): React.ReactElement {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  void selectedNode;
 
   useEffect(() => {
     const tick = () => void fetchRuns().then(setRuns);
@@ -42,6 +42,9 @@ export function AppShell(): React.ReactElement {
           <GraphCanvas runId={selected} onSelectNode={setSelectedNode} />
         ) : (
           <div style={{ padding: 24, color: "var(--muted)" }}>Select a run.</div>
+        )}
+        {selectedNode && (
+          <NodeDrawer sessionId={selectedNode} onClose={() => setSelectedNode(null)} />
         )}
       </main>
     </div>
