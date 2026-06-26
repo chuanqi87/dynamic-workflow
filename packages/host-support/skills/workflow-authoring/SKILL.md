@@ -1,7 +1,7 @@
 ---
 name: workflow-authoring
 description: >-
-  在 opencode 中编写或运行 workflow 脚本(`workflow` 工具)前必读。讲清楚何时该用 workflow、
+  编写或运行 workflow 脚本(`workflow` 工具 / MCP)前必读。讲清楚何时该用 workflow、
   如何扇出子 agent、parallel/pipeline/return 的契约,以及高频踩坑——独立 agent 串行 await、
   只 return 有损摘要导致结果没汇总回来、fan-out 规模与产物不匹配白烧 token。触发场景:编写/author
   一个 workflow、调用 workflow 工具、用子 agent 做编排、fan-out、parallel/pipeline、
@@ -10,11 +10,12 @@ description: >-
 
 # 编写与使用 workflow
 
-`workflow` 是一个 **tool**(Claude Code 上原生、opencode 上由本插件镜像)。你向它传一段
-**普通 JavaScript** 脚本,脚本用注入的全局量(`agent`/`parallel`/`pipeline`/`phase`/`log`/
-`workflow`/`args`/`budget`)**确定性地编排子 agent**。脚本自己不调模型,只负责安排调用。
+`workflow` 是一个 **tool**(Claude Code 上原生、opencode 上由插件镜像、Codex 上由
+`workflow-codex-mcp` MCP server 暴露)。你向它传一段 **普通 JavaScript** 脚本,脚本用注入的
+全局量(`agent`/`parallel`/`pipeline`/`phase`/`log`/`workflow`/`args`/`budget`)
+**确定性地编排子 agent**。脚本自己不调模型,只负责安排调用。
 
-完整规范见插件仓库 `docs/spec/WORKFLOW_SCRIPT_SPEC.md`。本 skill 是面向"真正动手写一个
+完整规范见仓库 `docs/spec/WORKFLOW_SCRIPT_SPEC.md`。本 skill 是面向"真正动手写一个
 workflow"时的深度层,重点在**何时用**和**怎么不踩坑**。
 
 ## 何时用 workflow,何时不用
@@ -52,8 +53,9 @@ return results.flat().filter(Boolean).filter((f) => f.verdict?.real)
 
 `meta` 必须是纯字面量(无变量、无函数调用、无模板插值)。
 
-**发起 workflow 后,一定要提示用户:可用 `/workflow` 打开实时执行面板查看进度。** 长任务
-优先后台运行(`workflow` 工具传 `background: true`),这样面板里能看到进度树实时推进。
+**发起 workflow 后,提示用户用宿主的实时面板/状态查询查看进度**(opencode: `/workflow` 面板;
+Codex: `workflow_status` 工具)。长任务优先后台运行(`workflow` 工具传 `background: true`),
+便于边跑边看进度推进。
 
 ## ⚠️ 高频踩坑(本 skill 的核心)
 
@@ -118,13 +120,14 @@ return { overview, parts: { a, b, c } }
 
 ### 6. 需要据以分支的结果,用 `schema`
 
-要对结果做 if/循环判断时,给 `agent()` 传 JSON Schema。opencode 上靠"提示 + 校验 + 重试"
-强制,Claude Code 上原生强制;两端你拿到的都是校验过的对象或 `null`。纯文本摘要不要用 schema。
+要对结果做 if/循环判断时,给 `agent()` 传 JSON Schema。opencode/Codex 上靠"提示 + 校验 + 重试"
+或原生 `outputSchema` 强制,Claude Code 上原生强制;无论哪端你拿到的都是校验过的对象或 `null`。
+纯文本摘要不要用 schema。
 
 ### 7. 确定性:禁止 `Date.now()` / `Math.random()` / 无参 `new Date()`
 
 校验器会在运行前拒绝它们。需要时间戳/随机种子,从 `args` 传入。这是同一份脚本能缓存、
-能 resume、两端表现一致的前提。
+能 resume、各端表现一致的前提。
 
 ## 推荐模式
 

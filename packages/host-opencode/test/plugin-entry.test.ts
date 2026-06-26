@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
 import { WorkflowPlugin } from "../src/plugin-entry.js";
-import { SKILLS_DIR } from "../src/skills-path.js";
+import { WORKFLOW_SKILLS_DIR } from "@workflow/host-support";
 
 function fakeInput(directory: string): Parameters<Plugin>[0] {
   const client = {
@@ -74,8 +74,8 @@ describe("WorkflowPlugin", () => {
     const config: { skills?: { paths?: string[] } } = {};
     await hooks.config?.(config as never);
     // The package-relative dir is registered, and it actually ships the skill.
-    expect(config.skills?.paths).toContain(SKILLS_DIR);
-    expect(await readFile(join(SKILLS_DIR, "workflow-authoring", "SKILL.md"), "utf8")).toContain(
+    expect(config.skills?.paths).toContain(WORKFLOW_SKILLS_DIR);
+    expect(await readFile(join(WORKFLOW_SKILLS_DIR, "workflow-authoring", "SKILL.md"), "utf8")).toContain(
       "name: workflow-authoring",
     );
   });
@@ -91,9 +91,9 @@ describe("WorkflowPlugin", () => {
 
     // Idempotent: re-running config on a config that already has the path keeps one entry.
     const on = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
-    const onCfg: { skills?: { paths?: string[] } } = { skills: { paths: [SKILLS_DIR] } };
+    const onCfg: { skills?: { paths?: string[] } } = { skills: { paths: [WORKFLOW_SKILLS_DIR] } };
     await on.config?.(onCfg as never);
-    expect(onCfg.skills?.paths).toEqual([SKILLS_DIR]);
+    expect(onCfg.skills?.paths).toEqual([WORKFLOW_SKILLS_DIR]);
   });
 
   test("runs an inline script end-to-end through the opencode adapter", async () => {

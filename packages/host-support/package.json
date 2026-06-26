@@ -8,7 +8,7 @@
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
   },
-  "files": ["dist", "src", "dashboard-dist"],
+  "files": ["dist", "src", "dashboard-dist", "skills"],
   "scripts": {
     "build": "tsc -p tsconfig.json && bun run build:dashboard",
     "build:dashboard": "vite build --config web/vite.config.ts",

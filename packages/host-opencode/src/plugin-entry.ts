@@ -3,6 +3,7 @@ import { type Plugin, tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { runWorkflow } from "@workflow/core";
 import {
+  AUTHORING_GUIDE,
   autoConcurrency,
   DashboardServer,
   FileJournalSink,
@@ -11,13 +12,12 @@ import {
   journalPath,
   persistScript,
   RunManager,
+  WORKFLOW_SKILLS_DIR,
 } from "@workflow/host-support";
-import { AUTHORING_GUIDE } from "./authoring-guide.js";
 import { OpencodeAdapter } from "./opencode-adapter.js";
 import { OpencodeTranscriptTranslator, type OpencodeEventLike } from "./opencode-transcript.js";
 import { readConfig, readToolConfig } from "./read-config.js";
 import { resolveSource } from "./resolve-source.js";
-import { SKILLS_DIR } from "./skills-path.js";
 
 const translator = new OpencodeTranscriptTranslator();
 
@@ -470,12 +470,12 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
 
       // Register the bundled `workflow-authoring` skill so every project using
       // this plugin gets it — opencode discovers skills from `skills.paths`.
-      // The dir ships inside the package (resolved relative to this module),
+      // The dir ships inside @workflow/host-support (shared with the Codex host),
       // so no copy/symlink into the user's config is needed.
       if (skillEnabled) {
         c.skills ??= {};
         const paths = Array.isArray(c.skills.paths) ? c.skills.paths : [];
-        if (!paths.includes(SKILLS_DIR)) paths.push(SKILLS_DIR);
+        if (!paths.includes(WORKFLOW_SKILLS_DIR)) paths.push(WORKFLOW_SKILLS_DIR);
         c.skills.paths = paths;
       }
     },

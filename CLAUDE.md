@@ -133,9 +133,12 @@ the portability contract**, but allowed to depend on the dashboard (only `core` 
 
 [WORKFLOW_SCRIPT_SPEC.md](./docs/spec/WORKFLOW_SCRIPT_SPEC.md) is the source of truth for
 the contract. [SPEC_TEST_MATRIX.md](./docs/spec/SPEC_TEST_MATRIX.md) maps contract clauses
-to regression tests — update it when changing cross-host behavior. `authoring-guide.md` is
-embedded into the tool description (also mirrored in `host-opencode/src/authoring-guide.ts`)
-so the model can author contract-compliant scripts. `examples/` are validated by
+to regression tests — update it when changing cross-host behavior. The authoring contract is
+shared from `host-support/src/authoring.ts`: `AUTHORING_GUIDE` (embedded into each host's
+`workflow` tool description) plus the deep `workflow-authoring` skill
+(`host-support/skills/`). opencode registers the skill dir via `config.skills.paths`; Codex
+exposes it over MCP (prompt + `workflow_guide` tool). Those three surfaces plus
+`docs/spec/authoring-guide.md` must stay in sync. `examples/` are validated by
 `scripts/portability-check.ts`.
 
 ## Conventions

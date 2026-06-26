@@ -2,10 +2,13 @@
 
 编写可移植工作流脚本的实用指引。规范性的规则请参见
 [WORKFLOW_SCRIPT_SPEC.md](./WORKFLOW_SCRIPT_SPEC.md);面向"动手写一个 workflow"的深度层与
-踩坑清单见 opencode skill `workflow-authoring`
-(`packages/host-opencode/skills/workflow-authoring/SKILL.md`,随插件发布、由 `config` 钩子
-注册进 opencode)。本文件、该 skill、以及嵌入工具描述的
-`packages/host-opencode/src/authoring-guide.ts` 三者内容应保持一致,改其一时同步另两处。
+踩坑清单见 `workflow-authoring` skill
+(`packages/host-support/skills/workflow-authoring/SKILL.md`,随包发布、host 无关)。
+两个 host 各自把它注册进去:opencode 经 `config` 钩子注册进 `skills.paths`;Codex 经
+`workflow-codex-mcp` 把它暴露为 MCP prompt + `workflow_guide` 工具。
+
+本文件、该 skill、以及嵌入工具描述的 `AUTHORING_GUIDE`
+(`packages/host-support/src/authoring.ts`)三者内容应保持一致,改其一时同步另两处。
 
 ## 心智模型
 

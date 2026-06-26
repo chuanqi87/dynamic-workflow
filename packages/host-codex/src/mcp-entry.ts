@@ -14,13 +14,16 @@
  */
 import { runWorkflow } from "@workflow/core";
 import {
+  AUTHORING_GUIDE,
   autoConcurrency,
   FileJournalSink,
   fileJournalSource,
   indexPath,
   journalPath,
   persistScript,
+  readWorkflowSkill,
   RunManager,
+  WORKFLOW_SKILL_NAME,
 } from "@workflow/host-support";
 import { CodexAdapter } from "./codex-adapter.js";
 import type { CodexLike } from "./codex-sdk.js";
@@ -243,6 +246,89 @@ export function buildWorkflowHandlers(deps: WorkflowHandlerDeps): {
   return { run, status, cancel, answer };
 }
 
+// ── MCP surface definitions (exported for unit tests) ───────────────────────────
+
+/**
+ * The MCP tools exposed to Codex. The `workflow` tool carries the full authoring
+ * contract (parity with the opencode plugin's tool description); `workflow_guide`
+ * returns the deep `workflow-authoring` skill on demand — the MCP-side analog of
+ * opencode's skill, for hosts that don't discover skills from the filesystem.
+ */
+export const WORKFLOW_TOOLS = [
+  {
+    name: "workflow",
+    description: AUTHORING_GUIDE,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        script: { type: "string", description: "Inline workflow source code" },
+        scriptPath: { type: "string", description: "Path to a .js workflow file" },
+        name: { type: "string", description: "Name of a registered workflow" },
+        input: { description: "Value exposed as the ambient `args`" },
+        resume: { type: "string", description: "Resume from a prior run id" },
+        replay: {
+          type: "string",
+          enum: ["keyed", "prefix"],
+          description: "Resume strategy",
+        },
+        background: {
+          type: "boolean",
+          description: "Run detached; return run id immediately",
+        },
+      },
+    },
+  },
+  {
+    name: "workflow_status",
+    description:
+      "List workflow runs (live in this process + persisted history) with status.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        runId: { type: "string", description: "Optional: report only this run" },
+      },
+    },
+  },
+  {
+    name: "workflow_cancel",
+    description: "Cancel an in-flight workflow run by its run id.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        runId: { type: "string", description: "The run id to cancel" },
+      },
+      required: ["runId"],
+    },
+  },
+  {
+    name: "workflow_answer",
+    description: "Answer a workflow run that is paused on a question() call.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        runId: { type: "string", description: "The paused run id" },
+        answer: { type: "string", description: "The answer to provide" },
+      },
+      required: ["runId", "answer"],
+    },
+  },
+  {
+    name: "workflow_guide",
+    description:
+      "Read the deep workflow-authoring guide BEFORE writing a non-trivial workflow: when to use a workflow vs a single agent, the parallel/pipeline/return contract, and the common token-wasting anti-patterns (serial independent agents, returning a lossy summary, oversized fan-out). Takes no arguments.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+];
+
+/** MCP prompts exposed to Codex — the on-demand authoring skill as a prompt. */
+export const WORKFLOW_PROMPTS = [
+  {
+    name: WORKFLOW_SKILL_NAME,
+    description:
+      "Deep guide for authoring portable workflow scripts: when to use a workflow, the parallel/pipeline/return contract, and the common token-wasting anti-patterns.",
+  },
+];
+
 // ── MCP stdio server ──────────────────────────────────────────────────────────
 
 /**
@@ -272,90 +358,22 @@ export async function startMcpServer(
     "@modelcontextprotocol/sdk/server/stdio.js"
   )) as typeof import("@modelcontextprotocol/sdk/server/stdio.js");
 
-  const { ListToolsRequestSchema, CallToolRequestSchema } = (await import(
+  const {
+    ListToolsRequestSchema,
+    CallToolRequestSchema,
+    ListPromptsRequestSchema,
+    GetPromptRequestSchema,
+  } = (await import(
     "@modelcontextprotocol/sdk/types.js"
   )) as typeof import("@modelcontextprotocol/sdk/types.js");
 
   const server = new Server(
     { name: "workflow-codex", version: "0.1.0" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, prompts: {} } },
   );
 
-  const TOOLS = [
-    {
-      name: "workflow",
-      description:
-        "Run a portable dynamic workflow script on Codex. Supply `script` (inline source), `scriptPath` (path to a .js file), or `name` (registry workflow).",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          script: { type: "string", description: "Inline workflow source code" },
-          scriptPath: {
-            type: "string",
-            description: "Path to a .js workflow file",
-          },
-          name: {
-            type: "string",
-            description: "Name of a registered workflow",
-          },
-          input: { description: "Value exposed as the ambient `args`" },
-          resume: {
-            type: "string",
-            description: "Resume from a prior run id",
-          },
-          replay: {
-            type: "string",
-            enum: ["keyed", "prefix"],
-            description: "Resume strategy",
-          },
-          background: {
-            type: "boolean",
-            description: "Run detached; return run id immediately",
-          },
-        },
-      },
-    },
-    {
-      name: "workflow_status",
-      description:
-        "List workflow runs (live in this process + persisted history) with status.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          runId: {
-            type: "string",
-            description: "Optional: report only this run",
-          },
-        },
-      },
-    },
-    {
-      name: "workflow_cancel",
-      description: "Cancel an in-flight workflow run by its run id.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          runId: { type: "string", description: "The run id to cancel" },
-        },
-        required: ["runId"],
-      },
-    },
-    {
-      name: "workflow_answer",
-      description: "Answer a workflow run that is paused on a question() call.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          runId: { type: "string", description: "The paused run id" },
-          answer: { type: "string", description: "The answer to provide" },
-        },
-        required: ["runId", "answer"],
-      },
-    },
-  ];
-
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS,
+    tools: WORKFLOW_TOOLS,
   }));
 
   server.setRequestHandler(
@@ -372,6 +390,8 @@ export async function startMcpServer(
             handlers.cancel(x as { runId: string }),
           workflow_answer: (x) =>
             handlers.answer(x as { runId: string; answer: string }),
+          // Static, on-demand guide — the MCP analog of opencode's skill.
+          workflow_guide: async () => ({ output: readWorkflowSkill() }),
         };
         const fn = dispatch[req.params.name];
         if (!fn) {
@@ -395,6 +415,28 @@ export async function startMcpServer(
           isError: true,
         };
       }
+    },
+  );
+
+  // Prompts: expose the `workflow-authoring` skill as an on-demand MCP prompt.
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: WORKFLOW_PROMPTS,
+  }));
+
+  server.setRequestHandler(
+    GetPromptRequestSchema,
+    async (req: { params: { name: string } }) => {
+      if (req.params.name !== WORKFLOW_SKILL_NAME) {
+        throw new Error(`Unknown prompt: ${req.params.name}`);
+      }
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: { type: "text" as const, text: readWorkflowSkill() },
+          },
+        ],
+      };
     },
   );
 

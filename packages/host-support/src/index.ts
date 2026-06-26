@@ -26,3 +26,9 @@ export { resolveSourceFrom } from "./resolve-source.js";
 export type { SourceInput } from "./resolve-source.js";
 export { shortHash, isCliEntry, parseArgv } from "./cli-helpers.js";
 export type { ParsedArgs } from "./cli-helpers.js";
+export {
+  AUTHORING_GUIDE,
+  WORKFLOW_SKILL_NAME,
+  WORKFLOW_SKILLS_DIR,
+  readWorkflowSkill,
+} from "./authoring.js";

@@ -1,10 +1,22 @@
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 /**
- * The authoring contract injected into the `workflow` tool description so the
- * opencode model can both RUN and WRITE portable workflow scripts. This is the
- * same contract Claude Code's native Workflow tool honours — a script written
- * to it runs unchanged on both hosts.
+ * Host-agnostic workflow authoring assets, shared by every host.
+ *
+ * - `AUTHORING_GUIDE`: the terse contract embedded into a host's `workflow`
+ *   tool description (always-on layer). The SAME contract Claude Code's native
+ *   Workflow tool honours.
+ * - The `workflow-authoring` skill: the deep, on-demand layer. opencode
+ *   registers `WORKFLOW_SKILLS_DIR` via `config.skills.paths`; Codex serves
+ *   `readWorkflowSkill()` over MCP (prompt + a `workflow_guide` tool).
+ *
+ * All three authoring surfaces (this guide, the SKILL.md, and
+ * `docs/spec/authoring-guide.md`) must stay in sync — change one, update the
+ * others.
  */
-export const AUTHORING_GUIDE = `Run a portable dynamic-workflow script that orchestrates multiple sub-agents deterministically. The SAME script runs unchanged on Claude Code and opencode.
+export const AUTHORING_GUIDE = `Run a portable dynamic-workflow script that orchestrates multiple sub-agents deterministically. The SAME script runs unchanged on Claude Code, opencode, and Codex.
 
 ## Script shape
 A workflow is plain JavaScript (NOT TypeScript). It MUST begin with a pure-literal meta block, then an async function body that uses ambient globals and ends with an optional \`return\`:
@@ -43,7 +55,30 @@ A workflow is plain JavaScript (NOT TypeScript). It MUST begin with a pure-liter
 - Prefer pipeline() over parallel() when stages are independent — it avoids barrier latency.
 - Use schema for any result you will branch on; filter nulls (\`.filter(Boolean)\`) before using parallel/pipeline results.
 - Keep agent prompts self-contained; sub-agents do not share conversation state.
-- Deeper authoring guidance + worked examples live in the \`workflow-authoring\` skill (opencode).
+- Deeper authoring guidance + worked examples live in the \`workflow-authoring\` skill.
 
 ## Invoking this tool
-Provide ONE of: \`script\` (inline source), \`scriptPath\` (path to a .js file), or \`name\` (a workflow registered under .opencode/workflows/). Optionally pass \`input\` as the workflow's \`args\`.`;
+Provide ONE of: \`script\` (inline source), \`scriptPath\` (path to a .js file), or \`name\` (a registered workflow). Optionally pass \`input\` as the workflow's \`args\`.`;
+
+/** The on-demand authoring skill's name (its directory + frontmatter name). */
+export const WORKFLOW_SKILL_NAME = "workflow-authoring";
+
+/**
+ * Absolute path to the `skills/` directory shipped inside this package,
+ * resolved from this module's REAL location.
+ *
+ * `realpathSync` is required because a host may load its plugin/server via a
+ * symlink; Node ESM does not auto-resolve symlinks, so a naive `import.meta.url`
+ * would point at the symlink and break the relative lookup. From either `dist/`
+ * (built) or `src/` (tests run the TS directly), the parent of this module's dir
+ * is the package root, where `skills/` lives — shipped via the package `files`
+ * field.
+ */
+const moduleDir = dirname(realpathSync(fileURLToPath(import.meta.url)));
+export const PACKAGE_ROOT = dirname(moduleDir);
+export const WORKFLOW_SKILLS_DIR = join(PACKAGE_ROOT, "skills");
+
+/** Read the `workflow-authoring` SKILL.md content (for hosts without a skill dir, e.g. Codex MCP). */
+export function readWorkflowSkill(): string {
+  return readFileSync(join(WORKFLOW_SKILLS_DIR, WORKFLOW_SKILL_NAME, "SKILL.md"), "utf8");
+}
