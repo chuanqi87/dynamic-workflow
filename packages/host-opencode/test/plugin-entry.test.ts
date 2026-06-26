@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
 import { WorkflowPlugin } from "../src/plugin-entry.js";
+import { SKILLS_DIR } from "../src/skills-path.js";
 
 function fakeInput(directory: string): Parameters<Plugin>[0] {
   const client = {
@@ -56,6 +57,34 @@ describe("WorkflowPlugin", () => {
     const config: { command?: Record<string, unknown> } = {};
     await hooks.config?.(config as never);
     expect(config.command?.workflow).toBeDefined();
+  });
+
+  test("registers the bundled workflow-authoring skill via config.skills.paths", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const hooks = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const config: { skills?: { paths?: string[] } } = {};
+    await hooks.config?.(config as never);
+    // The package-relative dir is registered, and it actually ships the skill.
+    expect(config.skills?.paths).toContain(SKILLS_DIR);
+    expect(await readFile(join(SKILLS_DIR, "workflow-authoring", "SKILL.md"), "utf8")).toContain(
+      "name: workflow-authoring",
+    );
+  });
+
+  test("skill registration is opt-out via { skill: false } and never duplicates", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const off = await WorkflowPlugin(fakeInput(dir), { dashboard: false, skill: false });
+    const offCfg: { skills?: { paths?: string[] }; command?: Record<string, unknown> } = {};
+    await off.config?.(offCfg as never);
+    expect(offCfg.skills).toBeUndefined();
+    // the /workflow command is still injected regardless
+    expect(offCfg.command?.workflow).toBeDefined();
+
+    // Idempotent: re-running config on a config that already has the path keeps one entry.
+    const on = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
+    const onCfg: { skills?: { paths?: string[] } } = { skills: { paths: [SKILLS_DIR] } };
+    await on.config?.(onCfg as never);
+    expect(onCfg.skills?.paths).toEqual([SKILLS_DIR]);
   });
 
   test("runs an inline script end-to-end through the opencode adapter", async () => {

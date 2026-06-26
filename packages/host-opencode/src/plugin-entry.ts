@@ -16,6 +16,7 @@ import { OpencodeAdapter } from "./opencode-adapter.js";
 import { OpencodeTranscriptTranslator, type OpencodeEventLike } from "./opencode-transcript.js";
 import { readConfig, readToolConfig } from "./read-config.js";
 import { resolveSource } from "./resolve-source.js";
+import { SKILLS_DIR } from "./skills-path.js";
 
 const translator = new OpencodeTranscriptTranslator();
 
@@ -74,6 +75,8 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
   const toolCfg = readToolConfig(options ?? {});
   const dashboardEnabled = (options as { dashboard?: boolean } | undefined)?.dashboard !== false;
   const dashboardPort = (options as { dashboardPort?: number } | undefined)?.dashboardPort;
+  // Register the bundled authoring skill into opencode (opt-out via `skill: false`).
+  const skillEnabled = (options as { skill?: boolean } | undefined)?.skill !== false;
 
   // Process-level run lifecycle: live registry + per-run cancel + persistent
   // index (history + crash recovery). Created regardless of the dashboard.
@@ -342,9 +345,15 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
     },
 
     config: async (config) => {
+      // `skills` is honoured by the opencode runtime but not yet in the SDK's
+      // Config type; cast a narrow shape (same approach as the `command` field).
+      const c = config as {
+        command?: Record<string, unknown>;
+        skills?: { paths?: string[]; urls?: string[] };
+      };
+
       // Best-effort: inject a /workflow command that nudges the model to call
       // the tool. Skip if the user already defined one.
-      const c = config as { command?: Record<string, unknown> };
       c.command ??= {};
       if (!c.command["workflow"]) {
         c.command["workflow"] = {
@@ -354,6 +363,17 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             "Treat $ARGUMENTS as a scriptPath if it looks like a file path, otherwise as a name. " +
             "If it is empty, ask which workflow to run.",
         };
+      }
+
+      // Register the bundled `workflow-authoring` skill so every project using
+      // this plugin gets it — opencode discovers skills from `skills.paths`.
+      // The dir ships inside the package (resolved relative to this module),
+      // so no copy/symlink into the user's config is needed.
+      if (skillEnabled) {
+        c.skills ??= {};
+        const paths = Array.isArray(c.skills.paths) ? c.skills.paths : [];
+        if (!paths.includes(SKILLS_DIR)) paths.push(SKILLS_DIR);
+        c.skills.paths = paths;
       }
     },
   };

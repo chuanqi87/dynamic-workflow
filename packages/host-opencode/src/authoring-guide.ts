@@ -37,9 +37,13 @@ A workflow is plain JavaScript (NOT TypeScript). It MUST begin with a pure-liter
 - A single parallel()/pipeline() call takes at most 4096 items; a whole run makes at most 1000 agent() calls.
 
 ## Good practice
+- Run independent agents CONCURRENTLY via parallel()/pipeline() — never \`await\` them one-by-one. Serial awaits don't save tokens; they just multiply wall-clock by the number of agents.
+- The script's \`return\` value is the ONLY thing surfaced back to the session — sub-agents' intermediate output is not. Return the gathered material, not just a lossy summary, or the expensive fan-out is paid for and discarded. Always \`return\` something.
+- Right-size the fan-out to the deliverable: a tiny output (e.g. a 10-line overview) does not justify a fleet of heavy explorers feeding a lossy synthesis (you pay for the detail twice — once to produce it, once to re-read it).
 - Prefer pipeline() over parallel() when stages are independent — it avoids barrier latency.
 - Use schema for any result you will branch on; filter nulls (\`.filter(Boolean)\`) before using parallel/pipeline results.
 - Keep agent prompts self-contained; sub-agents do not share conversation state.
+- Deeper authoring guidance + worked examples live in the \`workflow-authoring\` skill (opencode).
 
 ## Invoking this tool
 Provide ONE of: \`script\` (inline source), \`scriptPath\` (path to a .js file), or \`name\` (a workflow registered under .opencode/workflows/). Optionally pass \`input\` as the workflow's \`args\`.`;

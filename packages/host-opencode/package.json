@@ -18,7 +18,7 @@
   "bin": {
     "workflow-run": "./dist/cli-runner.js"
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "src", "skills"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "bun test"

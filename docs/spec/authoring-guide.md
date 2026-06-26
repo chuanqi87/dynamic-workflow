@@ -1,13 +1,31 @@
 # 编写指南
 
 编写可移植工作流脚本的实用指引。规范性的规则请参见
-[WORKFLOW_SCRIPT_SPEC.md](./WORKFLOW_SCRIPT_SPEC.md)。
+[WORKFLOW_SCRIPT_SPEC.md](./WORKFLOW_SCRIPT_SPEC.md);面向"动手写一个 workflow"的深度层与
+踩坑清单见 opencode skill `workflow-authoring`
+(`packages/host-opencode/skills/workflow-authoring/SKILL.md`,随插件发布、由 `config` 钩子
+注册进 opencode)。本文件、该 skill、以及嵌入工具描述的
+`packages/host-opencode/src/authoring-guide.ts` 三者内容应保持一致,改其一时同步另两处。
 
 ## 心智模型
 
 工作流是一个确定性的*编排器*。你编写普通 JS,调用 `agent()` 把工作委派给子代理,
 并用 `parallel()` / `pipeline()` 把这些工作扇出。脚本本身不发起任何模型调用——
 它只负责安排这些调用。
+
+## 反模式(最容易浪费 token / 结果没汇总)
+
+**独立的 agent 一定要并发。** 互不依赖的 `agent()` 不要逐个 `await`——那不省 token,
+只会把墙钟拉长成"各 agent 之和"。放进 `parallel()`(纯扇出)或 `pipeline()`(每条目多阶段),
+并发上限为 `min(16, cores-2)`。
+
+**`return` 是结果回到会话的唯一通道。** 工具只把脚本 `return` 的值回传给会话;各子 agent 的
+中间产出只进 dashboard / journal,不进会话。若扇出多个 agent 产出大量细节、却只 `return` 一个
+被压缩的小摘要,那些昂贵细节就白烧了。要回传**收集到的材料**,而不仅是有损摘要;且脚本务必有
+`return`(无 return → 结果为 `undefined`)。
+
+**让 fan-out 规模匹配产物。** 有损综合(大量详细输入 → 很小输出)会付两遍 token——一遍产出
+细节、一遍把细节当输入再读。产物很小就别配重型探索军团。
 
 ## 模式
 

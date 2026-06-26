@@ -91,6 +91,16 @@ workflow-run path/to/my.workflow.js --args '{"files":["src/a.ts"]}' --concurrenc
 使用内嵌的 opencode 服务器在聊天之外运行脚本——非常适合 CI、批量运行,以及验证
 跨宿主的一致性。
 
+### 4. 编写指引 skill(仅 opencode)
+
+工具描述只放精简的编写契约;深度的编写指引与踩坑清单放在 opencode skill
+`workflow-authoring`,在模型动手写 workflow 时按需加载。
+
+该 skill **随插件一起发布**(`packages/host-opencode/skills/`,见 package 的 `files`),
+并由插件的 `config` 钩子把这个包内目录注册进 opencode 的 `skills.paths`——**无需用户手动
+拷贝或建符号链接**,装了插件的任意项目都会自动拥有。首次安装后可能需要重启一次 opencode 才会
+被扫描到。如不需要,设插件选项 `{ "skill": false }` 关闭。
+
 ## 配置(插件选项)
 
 | 选项 | 类型 | 默认值 | 含义 |
