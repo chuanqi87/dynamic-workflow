@@ -211,8 +211,12 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
               manager.finish(runId, signal.aborted ? "cancelled" : "failed");
               throw err;
             }
+            // A script with no `return` (or one returning undefined) yields
+            // `undefined` here; JSON.stringify(undefined) is undefined, so guard
+            // it to an empty string rather than crashing on `.length` below.
             const base =
-              typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2);
+              (typeof res.result === "string" ? res.result : JSON.stringify(res.result, null, 2)) ??
+              "";
             // Persist a bounded copy so workflow_status can return it later.
             const persisted = base.length > 8192 ? `${base.slice(0, 8192)}…(truncated)` : base;
             manager.finish(runId, "completed", res.summary, persisted);
