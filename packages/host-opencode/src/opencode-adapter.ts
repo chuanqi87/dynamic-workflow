@@ -400,16 +400,27 @@ function isBadRequest(error: unknown): boolean {
 }
 
 /**
- * Whether an error is specifically the opencode server rejecting the `format`
- * field (an older server without native structured output). Requires BOTH a
- * bad-request shape AND the error text naming format/schema — so a generic 400
- * (wrong model, unknown agent, malformed prompt) is NOT mistaken for it and does
- * not trigger the one-time native downgrade.
+ * Whether an error means the host could not honor our native `format` request,
+ * so we should give up on native structured output and fall back to the portable
+ * prompt-envelope path. Two shapes count, both gated on a bad-request status so a
+ * generic 400 (wrong model, unknown agent, malformed prompt) is NOT mistaken for
+ * it:
+ *
+ *  1. The opencode server rejects the `format` field outright (an older server
+ *     without native structured output) — the text names format/schema.
+ *  2. A provider that lacks native json_schema *emulates* it by forcing a tool
+ *     call (`tool_choice: required`/object). Some models reject that — e.g.
+ *     DashScope/Qwen in thinking mode answers `<400> ... The tool_choice
+ *     parameter does not support being set to required or object in thinking
+ *     mode`. That text never names format, but it is still our schema request
+ *     failing, so the envelope fallback is the right recovery rather than nulling
+ *     the agent. This branch only fires when we actually sent a schema (the
+ *     caller gates on `sentFormat`), so a non-schema tool error stays a real error.
  */
 function isFormatRejection(error: unknown): boolean {
   if (!isBadRequest(error)) return false;
   const text = describe(error).toLowerCase();
-  return /format|json[_-]?schema|unrecognized|unknown (field|key|propert)|additional propert|unexpected (key|field|propert)/.test(
+  return /format|json[_-]?schema|unrecognized|unknown (field|key|propert)|additional propert|unexpected (key|field|propert)|tool[_-]?choice|thinking mode/.test(
     text,
   );
 }

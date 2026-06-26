@@ -56,7 +56,16 @@ describe("WorkflowPlugin", () => {
 
     const config: { command?: Record<string, unknown> } = {};
     await hooks.config?.(config as never);
-    expect(config.command?.workflow).toBeDefined();
+    const cmd = config.command?.workflow as { template?: string } | undefined;
+    expect(cmd).toBeDefined();
+    // /workflow just opens the live dashboard — starting runs is driven by the
+    // workflow-authoring skill, not this command.
+    expect(cmd?.template).toContain("workflow_dashboard");
+    // The dashboard tool is registered and gracefully reports when disabled.
+    expect(typeof hooks.tool?.workflow_dashboard?.execute).toBe("function");
+    const dash = await hooks.tool!.workflow_dashboard!.execute({}, fakeCtx(dir));
+    const dashOut = typeof dash === "string" ? dash : dash.output;
+    expect(dashOut).toContain("disabled");
   });
 
   test("registers the bundled workflow-authoring skill via config.skills.paths", async () => {
@@ -99,6 +108,8 @@ return { a, b };`;
     const parsed = JSON.parse(out.split("\n\nScript saved to ")[0]!);
     expect(parsed.a).toBe("echo:hi");
     expect(parsed.b).toEqual(["echo:x", "echo:y"]);
+    // Every result points the user back to the live execution panel.
+    expect(out).toContain("/workflow");
   });
 
   test("persists a generated inline script to .workflow/scripts and reports its path", async () => {
@@ -167,6 +178,8 @@ return { a, b };`;
     expect(meta?.runId).toBe("wf-m1");
     const startedOut = typeof started === "string" ? started : started.output;
     expect(startedOut).toContain("background");
+    // The kickoff message reminds the user to watch progress via /workflow.
+    expect(startedOut).toContain("/workflow");
 
     // Let the detached run finish, then poll the persisted status/result.
     release();
@@ -281,12 +294,43 @@ return await agent("hi");`;
     expect(all).not.toContain("✓ ");
   });
 
-  test("registers an event hook only when the dashboard is enabled", async () => {
+  test("registers event + command hooks only when the dashboard is enabled", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
     // Constructing the plugin does NOT start a server (that is lazy, on run).
     const withDash = await WorkflowPlugin(fakeInput(dir), {});
     const noDash = await WorkflowPlugin(fakeInput(dir), { dashboard: false });
     expect(typeof withDash.event).toBe("function");
+    expect(typeof withDash["command.execute.before"]).toBe("function");
     expect(noDash.event).toBeUndefined();
+    expect(noDash["command.execute.before"]).toBeUndefined();
+  });
+
+  test("/workflow opens the dashboard in the browser directly (no tool round-trip)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wf-plugin-"));
+    const opened: string[] = [];
+    // Ephemeral port avoids conflicts; inject openUrl so no real browser launches.
+    const hooks = await WorkflowPlugin(fakeInput(dir), {
+      dashboardPort: 0,
+      openUrl: (u: string) => opened.push(u),
+    } as never);
+    const before = hooks["command.execute.before"] as unknown as (
+      i: { command: string; sessionID: string; arguments: string },
+      o: { parts: Array<{ type: string; text?: string }> },
+    ) => Promise<void>;
+    expect(typeof before).toBe("function");
+
+    // A non-workflow command is left untouched.
+    const otherParts = [{ type: "text", text: "keep" }];
+    await before({ command: "other", sessionID: "s", arguments: "" }, { parts: otherParts });
+    expect(opened).toHaveLength(0);
+    expect(otherParts[0]!.text).toBe("keep");
+
+    // /workflow launches the browser and rewrites the prompt to a confirmation.
+    const parts = [{ type: "text", text: "original template" }];
+    await before({ command: "workflow", sessionID: "s", arguments: "" }, { parts });
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(parts[0]!.text).toContain(opened[0]!);
+    expect(parts[0]!.text).toContain("面板");
   });
 });

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { type Plugin, tool } from "@opencode-ai/plugin";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { runWorkflow } from "@workflow/core";
@@ -28,6 +29,29 @@ const translator = new OpencodeTranscriptTranslator();
  * (there it is the primary way to watch a run).
  */
 const SILENT_LOG_STREAM = { write(_s: string): void {} };
+
+/**
+ * Open a URL in the user's default browser. Cross-platform, fire-and-forget:
+ * detached + unref'd so it never blocks or keeps the host alive, and swallows
+ * every failure (a missing opener must not break the /workflow command). The
+ * plugin lets a caller override this via the `openUrl` option (used by tests so
+ * the suite never actually launches a browser).
+ */
+function defaultOpenUrl(url: string): void {
+  const [cmd, ...args] =
+    process.platform === "darwin"
+      ? ["open", url]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", "", url]
+        : ["xdg-open", url];
+  try {
+    const child = spawn(cmd!, args, { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // best-effort: never let opening a browser throw into the host
+  }
+}
 
 /**
  * Best-effort: read the model the host used for the assistant message that
@@ -64,17 +88,23 @@ async function resolveSessionModel(
 
 /**
  * opencode plugin that brings Claude Code's dynamic-workflow capability to
- * opencode. Registers the `workflow` tool (run/author), `workflow_cancel` and
- * `workflow_status` (lifecycle), a `/workflow` command, and a localhost web
- * dashboard for live workflow + agent-conversation viewing. Scripts run through
- * the host-agnostic core, so the same script also runs on Claude Code. The
- * dashboard is opencode-only.
+ * opencode. Registers the `workflow` tool (run/author), `workflow_cancel`,
+ * `workflow_answer`, `workflow_status` and `workflow_dashboard` (lifecycle), a
+ * `/workflow` command that opens the live dashboard in the browser directly
+ * (via the `command.execute.before` hook — no tool round-trip, no manual click),
+ * and a localhost web dashboard for live workflow + agent-conversation viewing.
+ * Scripts run through the host-agnostic core, so the same script also runs on
+ * Claude Code. The dashboard is opencode-only.
  */
 export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, options) => {
   const cfg = readConfig(options ?? {});
   const toolCfg = readToolConfig(options ?? {});
   const dashboardEnabled = (options as { dashboard?: boolean } | undefined)?.dashboard !== false;
   const dashboardPort = (options as { dashboardPort?: number } | undefined)?.dashboardPort;
+  // How /workflow launches the dashboard in a browser. Overridable so tests can
+  // assert the URL without actually opening a browser.
+  const openUrl =
+    (options as { openUrl?: (url: string) => void } | undefined)?.openUrl ?? defaultOpenUrl;
   // Register the bundled authoring skill into opencode (opt-out via `skill: false`).
   const skillEnabled = (options as { skill?: boolean } | undefined)?.skill !== false;
 
@@ -96,6 +126,36 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             for (const d of translator.translate(event as OpencodeEventLike)) {
               manager.registry.applyTranscript(d);
             }
+          },
+
+          // /workflow launches the dashboard directly: when the command fires we
+          // start the server (if needed) and open it in the browser ourselves —
+          // no tool round-trip, no "here's a link, click it". The expanded prompt
+          // is rewritten so the model just confirms in one line instead of acting.
+          "command.execute.before": async (
+            input: { command: string },
+            output: { parts: Array<{ type: string; text?: string }> },
+          ) => {
+            if (input.command !== "workflow") return;
+            let url: string | undefined;
+            try {
+              url = await dashboard.ensureStarted(dashboardPort);
+            } catch {
+              // dashboard is best-effort; fall through to the disabled note
+            }
+            if (url) {
+              openUrl(url);
+              void client.tui
+                .showToast({ body: { message: `Workflow 面板已打开 → ${url}`, variant: "info" } })
+                .catch(() => undefined);
+            }
+            const note = url
+              ? `已在浏览器为用户打开 workflow 实时执行面板(${url})。无需再调用任何工具,` +
+                `请用一句话告诉用户:面板已打开,可在其中实时查看所有 run 的进度树和每个子 agent 的对话。`
+              : `无法启动 workflow 执行面板(dashboard 可能已禁用)。请简短如实告知用户。`;
+            const textPart = output.parts.find((p) => p.type === "text");
+            if (textPart) textPart.text = note;
+            else output.parts.push({ type: "text", text: note });
           },
         }
       : {}),
@@ -224,9 +284,19 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             const persisted = base.length > 8192 ? `${base.slice(0, 8192)}…(truncated)` : base;
             manager.finish(runId, "completed", res.summary, persisted);
 
-            const output = savedScriptPath
-              ? `${base}\n\nScript saved to ${savedScriptPath}. To iterate, edit it and re-run with scriptPath + resume (run id ${runId}).`
-              : base;
+            // Always end by telling the user how to open the live execution
+            // panel — the model relays this so every workflow result points back
+            // to /workflow (mirrors Claude Code's "monitor with /workflows").
+            const parts = [base];
+            if (savedScriptPath) {
+              parts.push(
+                `Script saved to ${savedScriptPath}. To iterate, edit it and re-run with scriptPath + resume (run id ${runId}).`,
+              );
+            }
+            parts.push(
+              "IMPORTANT — tell the user: 可用 /workflow 打开实时执行面板,查看本次运行的进度与每个子 agent 的详情。",
+            );
+            const output = parts.join("\n\n");
             return {
               output,
               metadata: {
@@ -260,9 +330,10 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
                 void manager.flush();
               });
             const lines = [
-              `Workflow started in background. Run id: ${runId}`,
-              `Fetch progress/result with workflow_status (runId: ${runId}).`,
-              ...(dashboardUrl ? [`Dashboard: ${dashboardUrl}`] : []),
+              `Workflow "${args.name ?? runId}" started in background. Run id: ${runId}.`,
+              "IMPORTANT — tell the user: 运行已在后台启动,可用 /workflow 打开实时执行面板查看进度" +
+                `${dashboardUrl ? `(${dashboardUrl})` : ""}。完成后会有 toast 通知。`,
+              `Fetch the result later with workflow_status (runId: ${runId}).`,
             ];
             return {
               output: lines.join("\n"),
@@ -303,6 +374,35 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
             output: ok ? `answered ${args.runId}` : `run ${args.runId} has no pending question`,
             metadata: { answered: ok },
           };
+        },
+      }),
+
+      workflow_dashboard: tool({
+        description:
+          "Open the live workflow dashboard (execution view) and return its URL. The " +
+          "dashboard shows every run's progress tree and each sub-agent's conversation.",
+        args: {},
+        async execute() {
+          if (!dashboard) {
+            return {
+              output: "Workflow dashboard is disabled (plugin option { dashboard: false }).",
+              metadata: { dashboard: null },
+            };
+          }
+          try {
+            const url = await dashboard.ensureStarted(dashboardPort);
+            return {
+              output:
+                `Workflow dashboard: ${url}\n` +
+                "Open it to watch every workflow run's progress and per-agent conversations live.",
+              metadata: { dashboard: url },
+            };
+          } catch (err) {
+            return {
+              output: `Failed to start the workflow dashboard: ${(err as Error).message}`,
+              metadata: { dashboard: null },
+            };
+          }
         },
       }),
 
@@ -352,16 +452,19 @@ export const WorkflowPlugin: Plugin = async ({ client, directory, worktree }, op
         skills?: { paths?: string[]; urls?: string[] };
       };
 
-      // Best-effort: inject a /workflow command that nudges the model to call
-      // the tool. Skip if the user already defined one.
+      // Best-effort: inject a /workflow command that opens the live execution
+      // panel. Mirrors Claude Code, where the tool starts a run and a command
+      // surfaces the monitor — here the workflow-authoring skill drives starting
+      // runs, and /workflow just pulls up the dashboard. Skip if the user already
+      // defined one.
       c.command ??= {};
       if (!c.command["workflow"]) {
         c.command["workflow"] = {
-          description: "Run a portable dynamic workflow script",
+          description: "打开实时 workflow 执行面板 (dashboard)",
           template:
-            "Use the `workflow` tool to run the workflow referenced by: $ARGUMENTS\n" +
-            "Treat $ARGUMENTS as a scriptPath if it looks like a file path, otherwise as a name. " +
-            "If it is empty, ask which workflow to run.",
+            "用户想打开 workflow 实时执行面板。请调用 `workflow_dashboard` 工具拿到面板 URL," +
+            "然后用用户的语言把它作为可点击链接给出,并说明:在这个面板里可以实时查看所有 " +
+            "workflow 运行的进度树和每个子 agent 的对话。若工具返回 dashboard 已禁用,如实告知用户。",
         };
       }
 

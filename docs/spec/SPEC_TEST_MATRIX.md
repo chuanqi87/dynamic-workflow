@@ -55,6 +55,7 @@ DFX 加固行为,都至少映射到一个自动化测试。测试使用 `MockAda
 | 前缀恢复模式 | M7 | `resume.test.ts` → "prefix mode: changed early call invalidates" / "unchanged prefix reused" |
 | 原生结构化输出(opencode `format: json_schema`)+ ajv 兜底 | §3 | `engine.test.ts` → "native structured output: returns the host's structured object" / "ajv safety net rejects an invalid structured payload" / "formatUnsupported falls back to the prompt-envelope path";`opencode-adapter.test.ts` → "OpencodeAdapter native structured output" 区块 |
 | 旧服务端拒绝 `format` → 一次性降级 + 回退 ajv | §3 (DFX) | `opencode-adapter.test.ts` → "downgrades only on a format-specific 400, then stops sending format" |
+| provider 用强制 `tool_choice` 模拟 schema 被拒(如 Qwen thinking 模式)→ 降级回退 | §3 (DFX) | `opencode-adapter.test.ts` → "downgrades when a provider emulates schema via forced tool_choice and rejects it" |
 | 仅 format 相关 400 才降级(通用 400 不误判) | §3 (DFX) | `opencode-adapter.test.ts` → "a generic 400 (not about format) does NOT downgrade native (B1)" |
 | native 校验失败 → 回退 envelope 反馈式重试 | §3 | `engine.test.ts` → "an invalid native payload falls through to envelope retries" |
 | effort→reasoning_effort | M7 | 未实现 —— opencode SDK 的 prompt body 无逐 prompt 的 `reasoning_effort` 字段;effort 仅用于本地模型选择,已记录在案 |

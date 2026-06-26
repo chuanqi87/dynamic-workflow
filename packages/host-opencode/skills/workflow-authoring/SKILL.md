@@ -52,6 +52,9 @@ return results.flat().filter(Boolean).filter((f) => f.verdict?.real)
 
 `meta` 必须是纯字面量(无变量、无函数调用、无模板插值)。
 
+**发起 workflow 后,一定要提示用户:可用 `/workflow` 打开实时执行面板查看进度。** 长任务
+优先后台运行(`workflow` 工具传 `background: true`),这样面板里能看到进度树实时推进。
+
 ## ⚠️ 高频踩坑(本 skill 的核心)
 
 ### 1. 独立的 agent 一定要并发,不要逐个 `await`

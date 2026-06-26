@@ -78,9 +78,14 @@ bun run scripts/portability-check.ts   # 根据契约校验示例
 的形式暴露给脚本)。该工具的描述里内嵌了完整的编写指南,因此模型也可以**编写**
 符合契约的工作流。
 
-### 2. `/workflow` 命令(由用户触发)
+### 2. `/workflow` 命令(打开 dashboard)
 
-插件会注入一个 `/workflow <scriptPath-or-name>` 命令,用于驱动同一个工具。
+插件会注入一个 `/workflow` 命令,它**只做一件事:直接在浏览器里拉起实时执行面板
+(dashboard)**。命令触发时,插件经 `command.execute.before` 钩子启动面板服务并自动
+打开浏览器——不绕工具、不需要你手动点链接;面板里能实时看到所有 run 的进度树和每个
+子 agent 的对话。这与 Claude Code 对齐:工具负责发起、命令负责监控。发起 workflow 由
+`workflow-authoring` skill 引导,直接用自然语言描述任务即可让模型调用 `workflow` 工具;
+每次发起后,模型都会提示你用 `/workflow` 打开面板查看进度。
 
 ### 3. 无头 CLI
 

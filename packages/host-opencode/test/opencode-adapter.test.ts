@@ -242,6 +242,42 @@ describe("OpencodeAdapter native structured output", () => {
     expect(bodies[1]!.format).toBeUndefined();
   });
 
+  test("downgrades when a provider emulates schema via forced tool_choice and rejects it", async () => {
+    // DashScope/Qwen in thinking mode lacks native json_schema, so opencode
+    // emulates it with `tool_choice: required`, which the model rejects with a
+    // 400 that never names "format" — must still trigger the envelope fallback.
+    let calls = 0;
+    const bodies: Array<{ format?: unknown }> = [];
+    const { client } = fakeClient({
+      prompt: async (opts) => {
+        calls++;
+        bodies.push((opts as { body: { format?: unknown } }).body);
+        if (calls === 1) {
+          return {
+            data: undefined,
+            error: {
+              name: "BadRequestError",
+              data: {
+                statusCode: 400,
+                isRetryable: false,
+                message:
+                  "<400> InternalError.Algo.InvalidParameter: The tool_choice parameter does not support being set to required or object in thinking mode",
+              },
+            },
+          };
+        }
+        return { data: okData };
+      },
+    });
+    const adapter = makeAdapter(client);
+    const first = await adapter.runAgent(baseReq({ schema }));
+    expect(first.formatUnsupported).toBe(true);
+    expect(adapter.capabilities.structuredOutput).toBe(false);
+    const second = await adapter.runAgent(baseReq({ schema }));
+    expect(second.formatUnsupported).toBeUndefined();
+    expect(bodies[1]!.format).toBeUndefined();
+  });
+
   test("a generic 400 (not about format) does NOT downgrade native (B1)", async () => {
     const { client } = fakeClient({
       promptData: undefined,
