@@ -7,12 +7,12 @@ bun install
 bun run build          # tsc -b → packages/*/dist, then Vite → dashboard-dist/
 ```
 
-`bun run build` also runs `bun run build:dashboard` (Vite) as a final step, producing
-`packages/host-opencode/dashboard-dist/`. If you only need to rebuild the dashboard UI
+`bun run build` also runs the dashboard build (Vite) as a final step, producing
+`packages/host-support/dashboard-dist/`. If you only need to rebuild the dashboard UI
 without touching TypeScript:
 
 ```sh
-bun run build:dashboard   # Vite only — skips tsc -b
+bun run --filter='@workflow/host-support' build:dashboard   # Vite only — skips tsc -b
 ```
 
 > **Unbuilt dashboard:** if `dashboard-dist/` is absent (e.g. a fresh checkout before the
@@ -83,7 +83,7 @@ bun packages/host-opencode/dist/cli-runner.js \
 workflow 工具,然后从 toast 中打开仪表盘 URL,实时观看进度树以及每个代理的对话。
 
 > 实机运行会发起真实的模型调用(产生费用 + 需要鉴权)。单元/集成测试套件
-> (`bun test`,90+ 个测试)以及 `bun run scripts/portability-check.ts` 会在离线状态下
+> (`bun run test`,216 个测试)以及 `bun run scripts/portability-check.ts` 会在离线状态下
 > 覆盖其余所有内容。
 
 ---

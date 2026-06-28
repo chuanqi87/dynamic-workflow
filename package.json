@@ -1,5 +1,5 @@
 {
-  "name": "opencode-dynamic-workflow",
+  "name": "dynamic-workflow",
   "version": "0.1.0",
   "private": true,
   "description": "Portable dynamic-workflow runtime: write one workflow script, run it on both Claude Code and opencode.",

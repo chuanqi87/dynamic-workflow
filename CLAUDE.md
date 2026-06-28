@@ -62,7 +62,8 @@ core.
 ### Core (`packages/core/src`)
 
 - [engine.ts](./packages/core/src/engine.ts) — `runWorkflow(source, options)`, the single
-  entry point every opencode trigger funnels through. Validates, loads, builds globals,
+  entry point every host trigger (opencode tool/CLI, Codex CLI/MCP) funnels through.
+  Validates, loads, builds globals,
   executes the script body, returns result + `RunSummary`. Owns `SharedState` (semaphore,
   budget, journal, reporter, abort signal).
 - [types.ts](./packages/core/src/types.ts) — the contract. **`HostAdapter`** is the seam:
