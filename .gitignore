@@ -4,3 +4,5 @@ dist/
 .workflow/
 .DS_Store
 dashboard-dist/
+.claude/agent-memory/
+docs/superpowers/
